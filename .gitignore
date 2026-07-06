@@ -21,3 +21,8 @@ debug
 # files
 *.png
 *.pdf
+
+# Visual Studio 2026
+*.pyproj
+*.pyproj.user
+.vs/
