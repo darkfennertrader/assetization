@@ -1,0 +1,49 @@
+digraph overview {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=12
+    pad=0.6
+    bgcolor="white"
+    splines=false
+    label="PwC AI Assetization Platform — High-Level Architecture"
+    labelloc=t
+    labeljust=c
+  ]
+  node [fontname="Helvetica" fontsize=11 style=filled shape=box margin="0.3,0.2"]
+  edge [fontname="Helvetica" fontsize=10 color="#444444"]
+
+  L1 [
+    label="L1  SHOWROOM\nExternal prospects experience live AI demos\n(QR-code, 1-hour session, no data stored)"
+    fillcolor="#FFF0E0" color="#C86000" fontcolor="#C86000"
+    width=7 height=0.9
+  ]
+
+  L2 [
+    label="L2  MARKETPLACE\nInternal PwC teams discover, publish and adopt agents\n(self-service catalogue, versioned, governed)"
+    fillcolor="#E8F5E9" color="#2E7D32" fontcolor="#2E7D32"
+    width=7 height=0.9
+  ]
+
+  L3 [
+    label="L3  KNOWLEDGE BASE  (Phase 3)\nPer-client domain intelligence: indexed documents,\ncurated prompts, fine-tuned context"
+    fillcolor="#E8F0FB" color="#1B4F8A" fontcolor="#1B4F8A"
+    width=7 height=0.9
+  ]
+
+  L4 [
+    label="L4  SHARED SUBSTRATE  —  build once, reuse everywhere\n\nIdentity & Edge  ·  AI Gateway (APIM)  ·  Agent Runtime (ACA + Databricks Model Serving)\nAI Models (Azure OpenAI / custom)  ·  Data & ML — Databricks*  ·  Observability\n\n* optional module for lakehouse-native clients"
+    fillcolor="#F0F0F0" color="#444444" fontcolor="#333333"
+    width=7 height=1.5
+  ]
+
+  L1 -> L4 [style=invis]
+  L2 -> L4 [style=invis]
+  L3 -> L4 [style=invis]
+
+  L1 -> L4 [label="runs on" color="#C86000" fontcolor="#C86000"]
+  L2 -> L4 [label="runs on" color="#2E7D32" fontcolor="#2E7D32"]
+  L3 -> L4 [label="runs on" color="#1B4F8A" fontcolor="#1B4F8A"]
+
+  {rank=same L1 L2 L3}
+}

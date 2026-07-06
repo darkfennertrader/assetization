@@ -1,0 +1,293 @@
+// Aegon AI Lighthouses — Azure Architecture (v3 — xlabels for ortho compat)
+// Three lighthouses on one shared substrate.
+// Colour key:
+//   #0070C0 (blue)  = LH1 Investor Relations Agent
+//   #107C10 (green) = LH2 Historical Knowledge Base
+//   #E66C00 (orange)= LH3 Data Anomaly Detection
+//   #595959 (grey)  = SHARED substrate / asset
+//
+// LH1 Teams integration: Pattern B — Meeting Side Panel + Teams Live Transcription API
+//   (NO TTS in MVP — agent output is text-only, always spoken by a human)
+
+digraph Aegon_Architecture {
+    graph [
+        rankdir=TB
+        fontname="Segoe UI"
+        fontsize=11
+        bgcolor="#FAFAFA"
+        splines=ortho
+        nodesep=0.55
+        ranksep=0.7
+        label="Aegon AI Lighthouses — Azure Architecture v3\nLH1 = Investor Relations Agent (Teams)   LH2 = Historical Knowledge Base   LH3 = Data Anomaly Detection\nShared grey nodes = CORE assets built once, reused across all lighthouses"
+        labelloc=t
+        labeljust=c
+        fontsize=13
+    ]
+    node [fontname="Segoe UI" fontsize=9 style=filled shape=box margin="0.18,0.12" height=0.38]
+    edge [fontname="Segoe UI" fontsize=8 color="#444444" arrowsize=0.7]
+
+    // ─────────────────────────────────────────────────────────────
+    // L0 – USERS
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_users {
+        label="End Users"
+        fontsize=10
+        fontcolor="#222222"
+        style=filled
+        fillcolor="#EEF4FF"
+        color="#6E9FD0"
+        margin=12
+
+        u_ir  [label="IR Team / CEO / CFO\n(investor calls in Teams)" fillcolor="#BDD7EE" color="#0070C0" fontcolor="#0070C0"]
+        u_fin [label="Group Finance\nFR&O / FP&A / Accounting Policy" fillcolor="#C9EAC9" color="#107C10" fontcolor="#107C10"]
+        u_rep [label="Group Reporting\nTeam + Country Units" fillcolor="#FFD9B3" color="#E66C00" fontcolor="#E66C00"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // TEAMS INTEGRATION (LH1 only — live call path)
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_teams {
+        label="Microsoft Teams (LH1 — Live Call Layer)  [Teams Premium required]"
+        fontsize=10
+        style=filled
+        fillcolor="#EBF3FB"
+        color="#0070C0"
+        margin=12
+
+        teams_client     [label="Teams Desktop / Web Client\n(CEO / CFO device)" fillcolor="#BDD7EE" color="#0070C0"]
+        teams_consent    [label="Consent Banner\n(native Teams — shown\nwhen transcription starts)" fillcolor="#BDD7EE" color="#0070C0" style="filled,dashed"]
+        teams_transcript [label="Teams Live Transcription API\n(Microsoft-hosted, diarized\nspeaker-labelled events)" fillcolor="#BDD7EE" color="#0070C0"]
+        teams_sidepanel  [label="Meeting Side Panel App\n(Teams SDK v2 / Fluent UI React)\nShows: answer + citations\nHITL: CEO/CFO reads + speaks\nNO TTS — human delivers answer" fillcolor="#BDD7EE" color="#0070C0" penwidth=2]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L1 – IDENTITY & EDGE  (SHARED)
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l1 {
+        label="L1 — Identity & Edge  [SHARED]"
+        fontsize=10
+        style=filled
+        fillcolor="#F0F0F0"
+        color="#595959"
+        margin=10
+
+        entra_id  [label="Entra ID\n(staff SSO / RBAC)" fillcolor="#D9D9D9" color="#595959"]
+        entra_ext [label="Entra External ID\n(guest / analyst access)" fillcolor="#D9D9D9" color="#595959"]
+        afd       [label="Azure Front Door + WAF\n(TLS termination, geo-routing)" fillcolor="#D9D9D9" color="#595959"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L2 – EXPERIENCE
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l2 {
+        label="L2 — Experience Layer (Azure Container Apps)"
+        fontsize=10
+        style=filled
+        fillcolor="#F8FBFF"
+        color="#888888"
+        margin=10
+
+        ui_lh1 [label="LH1 — IR Portal (web)\n(call prep, analyst profiles,\npost-call knowledge)" fillcolor="#BDD7EE" color="#0070C0"]
+        ui_lh2 [label="LH2 — Knowledge Base Web\n(Q&A + document search)" fillcolor="#C9EAC9" color="#107C10"]
+        ui_lh3 [label="LH3 — Anomaly Dashboard\n(KPIs + drill-down + actions)" fillcolor="#FFD9B3" color="#E66C00"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L3 – AI GATEWAY  (SHARED)
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l3 {
+        label="L3 — AI Gateway  [SHARED ASSET]"
+        fontsize=10
+        style=filled
+        fillcolor="#E8E8E8"
+        color="#595959"
+        margin=10
+
+        apim [label="Azure APIM AI Gateway\n· token quotas & cost tags\n· content-safety filter\n· model routing (GPT-4o / fallback)\n· MCP tool endpoint exposure\n· full request/response audit log" fillcolor="#D9D9D9" color="#595959" shape=box]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L4 – AGENT RUNTIME  (SHARED)
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l4 {
+        label="L4 — Agent Runtime  [SHARED ASSET]"
+        fontsize=10
+        style=filled
+        fillcolor="#E8E8E8"
+        color="#595959"
+        margin=10
+
+        orch [label="LangGraph Orchestrator\n(ACA — stateful agent graph\ncheckpointing, interrupt/resume)" fillcolor="#D9D9D9" color="#595959"]
+        hitl [label="[ASSET] HITL Gate\n(interrupt node — human approves\nbefore answer/action fires)" fillcolor="#D0D0D0" color="#595959" style="filled,dashed"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L5 – MCP TOOLS  (SHARED marketplace assets)
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l5 {
+        label="L5 — MCP Tools (Marketplace CORE Assets — ACA)"
+        fontsize=10
+        style=filled
+        fillcolor="#E8E8E8"
+        color="#595959"
+        margin=12
+
+        t_rag       [label="[ASSET] /rag\nhybrid search\ncitation preservation" fillcolor="#D0D0D0" color="#595959" style="filled,dashed"]
+        t_extract   [label="[ASSET] /extract\nOCR + metadata tag\napproval-status filter" fillcolor="#D0D0D0" color="#595959" style="filled,dashed"]
+        t_sentiment [label="[LH1] /sentiment\nanalyst profile lookup\nhistorical question pattern" fillcolor="#BDD7EE" color="#0070C0" style="filled,dashed"]
+        t_batch_stt [label="[LH1] /batch-stt\nAzure AI Speech\npost-call archive only" fillcolor="#BDD7EE" color="#0070C0" style="filled,dashed"]
+        t_anomaly   [label="[LH3] /anomaly\nQoQ diff + threshold check\nLLM narrative" fillcolor="#FFD9B3" color="#E66C00" style="filled,dashed"]
+        t_notify    [label="[ASSET] /notify\nemail dispatch via\nCommunication Services" fillcolor="#D0D0D0" color="#595959" style="filled,dashed"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L6 – MODELS  (SHARED)
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l6 {
+        label="L6 — AI Models  [SHARED]"
+        fontsize=10
+        style=filled
+        fillcolor="#E8E8E8"
+        color="#595959"
+        margin=10
+
+        aoai    [label="Azure OpenAI\nGPT-4o (chat / reason)\ntext-embedding-3-large" fillcolor="#D9D9D9" color="#595959"]
+        speech  [label="Azure AI Speech\nBatch STT — post-call\narchive transcription only" fillcolor="#BDD7EE" color="#0070C0"]
+        doc_int [label="Azure Document Intelligence\nOCR — LH2 document\ningestion pipeline" fillcolor="#C9EAC9" color="#107C10"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L7 – DATA
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l7 {
+        label="L7 — Data Stores"
+        fontsize=10
+        style=filled
+        fillcolor="#F5F5F5"
+        color="#888888"
+        margin=12
+
+        ai_lh1  [label="AI Search — LH1\nQ&A deck + archived\ncall transcripts (hybrid)" fillcolor="#BDD7EE" color="#0070C0"]
+        ai_lh2a [label="AI Search — LH2 Internal\nApproved Finance docs\nhybrid, row-filter RBAC" fillcolor="#C9EAC9" color="#107C10"]
+        ai_lh2b [label="AI Search — LH2 External\nExternal feeds\nsource_type=external" fillcolor="#C9EAC9" color="#107C10" style="filled,dashed"]
+        blob    [label="ADLS Gen2 / Blob  [SHARED]\nRaw docs, Q&A decks\nTagetik dumps, Teams recordings" fillcolor="#D9D9D9" color="#595959"]
+        cosmos  [label="Cosmos DB  [SHARED]\nAnalyst profiles (LH1)\nApproval metadata (LH2)\nThresholds config (LH3)\nHITL state + call notes" fillcolor="#D9D9D9" color="#595959"]
+        databricks [label="Databricks\nDelta Lake + Unity Catalog\nTagetik QoQ data\nRow-level security per unit" fillcolor="#FFD9B3" color="#E66C00"]
+        kv      [label="Key Vault  [SHARED]\nSecrets, API keys\ncertificates" fillcolor="#D9D9D9" color="#595959"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L8 – INGESTION & TRIGGERS
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l8 {
+        label="L8 — Ingestion & Triggers"
+        fontsize=10
+        style=filled
+        fillcolor="#F5F5F5"
+        color="#888888"
+        margin=10
+
+        logic_rec     [label="Logic Apps — Post-call\nCopies Teams recording\nStream/SharePoint to Blob" fillcolor="#BDD7EE" color="#0070C0"]
+        logic_tagetik [label="Logic Apps — Scheduled\nTagetik data-dump download" fillcolor="#FFD9B3" color="#E66C00"]
+        evtgrid       [label="Event Grid + Functions\nDoc-approval event\nindex refresh pipeline" fillcolor="#C9EAC9" color="#107C10"]
+        comm_svc      [label="Azure Communication Services\n[ASSET] Email dispatch\nLH3 daily summary" fillcolor="#D9D9D9" color="#595959"]
+        purview       [label="Microsoft Purview\nData classification, lineage\napproval status (LH2)" fillcolor="#C9EAC9" color="#107C10"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // L9 – OBSERVABILITY & GOVERNANCE  (SHARED)
+    // ─────────────────────────────────────────────────────────────
+    subgraph cluster_l9 {
+        label="L9 — Observability & Governance  [SHARED]"
+        fontsize=10
+        style=filled
+        fillcolor="#E8E8E8"
+        color="#595959"
+        margin=10
+
+        appins    [label="App Insights\nagent runs, tool calls\nlatency, errors" fillcolor="#D9D9D9" color="#595959"]
+        logana    [label="Log Analytics Workspace\ncentralized logs" fillcolor="#D9D9D9" color="#595959"]
+        langsmith [label="LangSmith\nLLM traces, evals\nprompt versioning" fillcolor="#D9D9D9" color="#595959"]
+        evthub    [label="Event Hub → ADLS Gen2\nimmutable audit log" fillcolor="#D9D9D9" color="#595959"]
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // EDGES — no inline labels (use xlabel to avoid ortho warning)
+    // ─────────────────────────────────────────────────────────────
+
+    // Users → entry points
+    u_ir  -> teams_client   [color="#0070C0" penwidth=2]
+    u_ir  -> ui_lh1         [color="#0070C0"]
+    u_fin -> ui_lh2         [color="#107C10" penwidth=1.5]
+    u_rep -> ui_lh3         [color="#E66C00" penwidth=1.5]
+
+    // Teams live-call path
+    teams_client -> teams_consent    [color="#0070C0" style=dashed]
+    teams_client -> teams_transcript [color="#0070C0" penwidth=1.5]
+    teams_client -> teams_sidepanel  [color="#0070C0" penwidth=2]
+    teams_transcript -> teams_sidepanel [color="#0070C0"]
+    teams_sidepanel  -> apim         [color="#0070C0" penwidth=2]
+
+    // Identity → edge → UIs
+    entra_id  -> afd    [color="#595959"]
+    entra_ext -> afd    [color="#595959"]
+    afd -> ui_lh1       [color="#595959"]
+    afd -> ui_lh2       [color="#595959"]
+    afd -> ui_lh3       [color="#595959"]
+
+    // UIs → APIM
+    ui_lh1 -> apim  [color="#0070C0" penwidth=1.5]
+    ui_lh2 -> apim  [color="#107C10" penwidth=1.5]
+    ui_lh3 -> apim  [color="#E66C00" penwidth=1.5]
+
+    // APIM → Orchestrator
+    apim -> orch    [color="#595959" penwidth=2]
+
+    // Orchestrator → HITL → Side Panel (answer, text only)
+    orch -> hitl            [color="#595959"]
+    hitl -> teams_sidepanel [color="#0070C0" style=dashed]
+
+    // Orchestrator → Tools
+    orch -> t_rag       [color="#0070C0"]
+    orch -> t_extract   [color="#107C10"]
+    orch -> t_sentiment [color="#0070C0"]
+    orch -> t_batch_stt [color="#0070C0"]
+    orch -> t_anomaly   [color="#E66C00"]
+    orch -> t_notify    [color="#E66C00"]
+
+    // Tools → Models
+    t_rag       -> aoai    [color="#595959"]
+    t_batch_stt -> speech  [color="#0070C0"]
+    t_extract   -> doc_int [color="#107C10"]
+    t_anomaly   -> aoai    [color="#E66C00"]
+
+    // Tools → Data
+    t_rag       -> ai_lh1   [color="#0070C0"]
+    t_rag       -> ai_lh2a  [color="#107C10"]
+    t_rag       -> ai_lh2b  [color="#107C10" style=dashed]
+    t_sentiment -> cosmos   [color="#0070C0"]
+    t_batch_stt -> blob     [color="#0070C0"]
+    t_batch_stt -> ai_lh1   [color="#0070C0"]
+    t_extract   -> blob     [color="#107C10"]
+    t_extract   -> ai_lh2a  [color="#107C10"]
+    t_anomaly   -> databricks [color="#E66C00"]
+    t_anomaly   -> cosmos   [color="#E66C00"]
+    t_notify    -> comm_svc [color="#595959"]
+    orch        -> cosmos   [color="#595959"]
+
+    // Ingestion → Data
+    logic_rec     -> blob       [color="#0070C0"]
+    logic_tagetik -> blob       [color="#E66C00"]
+    logic_tagetik -> databricks [color="#E66C00"]
+    evtgrid       -> ai_lh2a    [color="#107C10"]
+    purview       -> ai_lh2a    [color="#107C10"]
+
+    // KV secrets
+    kv -> apim  [color="#595959" style=dashed]
+
+    // Observability
+    apim -> evthub    [color="#595959" style=dashed]
+    orch -> appins    [color="#595959" style=dashed]
+    orch -> langsmith [color="#595959" style=dashed]
+    appins -> logana  [color="#595959" style=dashed]
+}

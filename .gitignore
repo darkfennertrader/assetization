@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Build artefacts
+docs/build.log
+/tmp/assetization-*.md
+
+# dirs
+.vscode
+.clinerules
+debug
+
+# files
+*.png
+*.pdf

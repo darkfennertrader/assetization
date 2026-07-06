@@ -1,0 +1,220 @@
+digraph phase1 {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=14
+    pad=0.8
+    bgcolor="white"
+    splines=polyline
+    nodesep=1.0
+    ranksep=1.2
+  ]
+  node [fontname="Helvetica" fontsize=12 style=filled shape=box margin="0.28,0.20"]
+  edge [fontname="Helvetica" fontsize=10]
+
+  // ── Browser cluster ──────────────────────────────────────────────────────
+  subgraph cluster_browser {
+    label="Browser  (PwC FinCrime staff · @pwc.com)"
+    style=filled
+    color="#C86000"
+    fillcolor="#FFF0E0"
+    fontsize=12
+    fontcolor="#C86000"
+
+    catalogUI [
+      label="React components\n(Catalog UI · authorized demo tiles)"
+      fillcolor="#FFD9B3" color="#C86000" fontcolor="#333333"
+      width=3.4 height=0.90
+    ]
+    msalBrowser [
+      label="MSAL React (PKCE)\nkicks off login redirect"
+      fillcolor="#FFD9B3" color="#C86000" fontcolor="#333333"
+      width=3.2 height=0.85
+    ]
+  }
+
+  // ── PwC Entra ID ─────────────────────────────────────────────────────────
+  entra [
+    label="PwC Entra ID\n(corporate tenant · FinCrime-Showroom group)"
+    fillcolor="#E8F0FB" color="#1B4F8A" fontcolor="#333333"
+    width=4.2 height=1.0
+  ]
+
+  // ── ACA environment ───────────────────────────────────────────────────────
+  subgraph cluster_acaenv {
+    label="ACA Environment   cae-pwc-showroom-dev-we\nConsumption · West Europe · no VNet · shared Log Analytics"
+    style=filled
+    color="#1B4F8A"
+    fillcolor="#EEF3FA"
+    fontsize=12
+    fontcolor="#1B4F8A"
+
+    // ── Showroom ACA app ─────────────────────────────────────────────────
+    subgraph cluster_showroom {
+      label="ACA app: ca-pwc-showroom-dev-we\nNext.js server (Node) · HTTPS ingress · scale 0-5\nFE served as static assets from this container image"
+      style=filled
+      color="#1B4F8A"
+      fillcolor="#E8F0FB"
+      fontsize=11
+      fontcolor="#1B4F8A"
+
+      // ── Static + page server (not the BFF) ───────────────────────────
+      nextStatic [
+        label="Next.js static + page server\n(GET /  ·  GET /_next/static/*)\nno auth · public assets"
+        fillcolor="#C8D8F0" color="#1B4F8A" fontcolor="#111111"
+        width=3.4 height=0.90
+      ]
+
+      // ── BFF sub-cluster ───────────────────────────────────────────────
+      subgraph cluster_bff {
+        label="BFF  (server-side Next.js API routes — runs in Node, never in browser)"
+        style=filled
+        color="#444444"
+        fillcolor="#D8D8D8"
+        fontsize=11
+        fontcolor="#333333"
+
+        authApi [
+          label="NextAuth handler\n/api/auth/[...nextauth]"
+          fillcolor="#AAAAAA" color="#444444" fontcolor="#111111"
+          width=3.2 height=0.85
+        ]
+        groupChk [
+          label="Session middleware\n+ Group check (FinCrime-Showroom)"
+          fillcolor="#AAAAAA" color="#444444" fontcolor="#111111"
+          width=3.2 height=0.85
+        ]
+        demomap [
+          label="Demo-map lookup\n(demo-map.json baked in image)"
+          fillcolor="#AAAAAA" color="#444444" fontcolor="#111111"
+          width=3.2 height=0.85
+        ]
+        demosApi [
+          label="/api/demos handler\n(returns authorized demo list + launchUrls)"
+          fillcolor="#AAAAAA" color="#444444" fontcolor="#111111"
+          width=3.2 height=0.85
+        ]
+        kvClient [
+          label="Key Vault client\n(startup only — fetches client-secret via MI)"
+          fillcolor="#E8E8E8" color="#888888" fontcolor="#444444"
+          style="filled,dashed"
+          width=3.2 height=0.85
+        ]
+
+        // intra-BFF flow (solid — these are internal steps on every request)
+        authApi  -> groupChk  [label=""       color="#555555"]
+        groupChk -> demomap   [label="lookup" color="#555555" fontcolor="#555555"]
+        demomap  -> demosApi  [label=""       color="#555555"]
+      }
+    }
+  }
+
+  // ── Key Vault ─────────────────────────────────────────────────────────────
+  keyvault [
+    label="Azure Key Vault\nkv-pwc-showroom-dev-we\n(showroom-client-secret · <demo>-client-secret · ...)"
+    fillcolor="#FFF3E0" color="#E65100" fontcolor="#333333"
+    width=3.8 height=1.1
+  ]
+
+  // ── Generic demo apps ────────────────────────────────────────────────────
+  demoApps [
+    label="Demo Apps\n(Demo App 1  ·  Demo App 2  ·  ...)\neach has its own URL (launchUrl)"
+    fillcolor="#E8F5E9" color="#2E7D32" fontcolor="#1B5E20"
+    width=4.0 height=1.0
+  ]
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Arrows — request-initiated convention: initiator → responder
+  //
+  //   SOLID  = user-request-path: on the critical path of every user action
+  //   DASHED = background / server-to-server / startup (user never sees this)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // (1) Browser fetches page + React bundle — solid (hot path, every page load)
+  // Handled by Next.js static/page server, NOT the BFF (/api/* routes)
+  catalogUI -> nextStatic [
+    label="(1) GET /\nHTML shell + React bundle\n(FE served from container image)"
+    color="#1B4F8A" fontcolor="#1B4F8A"
+    style=solid
+  ]
+
+  // (2) Browser triggers login — solid (user-initiated)
+  msalBrowser -> authApi [
+    label="(2) GET /api/auth/signin"
+    color="#1B4F8A" fontcolor="#1B4F8A"
+    style=solid
+  ]
+
+  // (3) Browser → Entra authorize — solid (browser redirect, user sees it)
+  msalBrowser -> entra [
+    label="(3) GET /authorize\n?redirect_uri=BFF/callback (PKCE)"
+    color="#1B4F8A" fontcolor="#1B4F8A"
+    style=solid
+  ]
+
+  // (4) Browser delivers auth code to BFF callback — solid (browser redirect)
+  msalBrowser -> authApi [
+    label="(4) GET /api/auth/callback?code=..."
+    color="#1B4F8A" fontcolor="#1B4F8A"
+    style=solid
+  ]
+
+  // (5) BFF → Entra token exchange — dashed (server-to-server, user never sees it)
+  authApi -> entra [
+    label="(5) POST /token\n(client_secret + code_verifier)"
+    color="#1B4F8A" fontcolor="#1B4F8A"
+    style=dashed
+  ]
+
+  // (6) BFF → Key Vault at startup — dashed (once per container boot, not per request)
+  kvClient -> keyvault [
+    label="(6) reads client-secret\n(DefaultAzureCredential · MI · startup)"
+    color="#E65100" fontcolor="#E65100"
+    style=dashed
+  ]
+
+  // (7) Browser fetches authorized demo list — solid (user-visible tiles)
+  catalogUI -> demosApi [
+    label="(7) GET /api/demos"
+    color="#555555" fontcolor="#555555"
+    style=solid
+  ]
+
+  // (8) Browser launches demo — solid (user-visible navigation)
+  catalogUI -> demoApps [
+    label="(8) top-level redirect\n-> launchUrl (GET)"
+    color="#2E7D32" fontcolor="#2E7D32"
+    style=solid
+  ]
+
+  // ── Legend (single HTML-table node, pinned to bottom) ────────────────────
+  legend [
+    shape=none
+    margin=0
+    label=<
+      <table border="1" cellborder="0" cellspacing="0" cellpadding="6"
+             bgcolor="#F8F8F8" color="#AAAAAA">
+        <tr><td colspan="2" align="center"><b>Legend</b></td></tr>
+        <tr>
+          <td align="right"><b>&#8212;&#8212;&#8212;</b></td>
+          <td align="left">solid line = user-request-path (critical path, every user action)</td>
+        </tr>
+        <tr>
+          <td align="right"><b>- - - - -</b></td>
+          <td align="left">dashed line = background / server-to-server / startup (user never sees this)</td>
+        </tr>
+        <tr>
+          <td align="right">dashed box</td>
+          <td align="left">component runs at container startup only, not per request</td>
+        </tr>
+        <tr>
+          <td colspan="2" align="left">
+            <font point-size="10">blue = auth flow &#160;&#183;&#160; grey = app data &#160;&#183;&#160; green = demo launch &#160;&#183;&#160; orange = secret retrieval</font>
+          </td>
+        </tr>
+      </table>
+    >
+  ]
+
+  { rank=sink; legend }
+}

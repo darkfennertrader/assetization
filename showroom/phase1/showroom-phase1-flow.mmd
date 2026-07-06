@@ -1,0 +1,50 @@
+sequenceDiagram
+    autonumber
+    actor U as Browser<br/>(PwC FinCrime staff)
+    participant S as ACA / Next.js BFF<br/>ca-pwc-showroom-dev-we
+    participant E as PwC Entra ID<br/>(corporate tenant)
+    participant O as Overwatch ACA<br/>ca-pwc-overwatch-dev-we
+
+    U->>S: GET https://showroom.pwc.com/
+    S-->>U: 302 → Entra /authorize (PKCE)
+    U->>E: /authorize + code_challenge
+    E-->>U: login form
+    U->>E: submit @pwc.com credentials
+    E-->>U: 302 → ACA /api/auth/callback?code=…
+    U->>S: /api/auth/callback?code=…
+    S->>E: POST /token (code + code_verifier)
+    E-->>S: ID token (oid + groups claim)
+
+    alt Not in FinCrime-Showroom group
+        rect rgb(255, 210, 210)
+            S-->>U: Friendly "No access" page
+        end
+    else Group membership confirmed
+        rect rgb(220, 245, 220)
+            S->>S: Load demo-map.json<br/>filter demos by oid / group OIDs
+            S-->>U: /catalog HTML (authorized demo tiles + launchUrls)
+            U->>U: Click "Overwatch" tile<br/>window.location.href = launchUrl
+        end
+    end
+
+    Note over U,S: ── Browser navigates to Overwatch URL (top-level redirect) ──
+
+    U->>O: GET https://ca-pwc-overwatch-dev-we…/
+    O-->>U: 302 → Entra /authorize (PKCE, own App Registration)
+    U->>E: /authorize + code_challenge<br/>(Entra session cookie already set — silent SSO)
+    E-->>U: 302 → Overwatch /api/auth/callback?code=…<br/>(no login form shown)
+    U->>O: /api/auth/callback?code=…
+    O->>E: POST /token (code + code_verifier)
+    E-->>O: ID token (oid + groups claim)
+
+    alt Not in FinCrime-Showroom group
+        rect rgb(255, 210, 210)
+            O-->>U: Friendly "No access" page
+        end
+    else Group membership confirmed
+        rect rgb(210, 235, 255)
+            O-->>U: Overwatch application UI
+        end
+    end
+
+    Note over S: Startup: image pulled from ACR via Managed Identity<br/>Runtime: stdout/stderr → Log Analytics (both ACA apps)

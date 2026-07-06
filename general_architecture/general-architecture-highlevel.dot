@@ -1,0 +1,217 @@
+digraph general_architecture {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=11
+    pad=0.5
+    splines=true
+    bgcolor="white"
+    label="PwC AI Platform — General High-Level Architecture\nShowroom · Marketplace · Knowledge Base · Shared Substrate"
+    labelloc=b
+    labeljust=c
+    nodesep=0.5
+    ranksep=0.6
+  ]
+  node [fontname="Helvetica" fontsize=10 style=filled shape=box]
+  edge [fontname="Helvetica" fontsize=9]
+
+  // ───────────────────────────────────────────────────────────────
+  // L1 — SHOWROOM (external prospects)
+  // ───────────────────────────────────────────────────────────────
+  subgraph cluster_showroom {
+    label="L1 — SHOWROOM\nExternal prospects · QR-code demo access · 1-hour sessions"
+    style=filled fillcolor="#FFF0E0" color="#C86400"
+    fontcolor="#C86400" fontsize=12 fontname="Helvetica-Bold"
+
+    showroom_ui [
+      label="Showroom UI\n(Next.js · mobile-first)\nProspect demo views\n+ countdown timer"
+      fillcolor="#FFD8A0" color="#C86400"
+    ]
+    admin_ui [
+      label="Presenter Admin\n(Next.js · Entra ID)\nSession generator\n+ live session list"
+      fillcolor="#FFD8A0" color="#C86400"
+    ]
+    bff_showroom [
+      label="Showroom BFF\n(Node.js)\nPOST /sessions → mint JWT\nGET /session/refresh\nQR code generation"
+      fillcolor="#FFD8A0" color="#C86400"
+    ]
+    cosmos_sessions [
+      label="Session Store\n(Cosmos DB)\n{ sessionId, demoIds[]\n  expiresAt, status }"
+      fillcolor="#FFD8A0" color="#C86400"
+      shape=cylinder
+    ]
+
+    admin_ui -> bff_showroom [label="create session" color="#C86400" fontcolor="#C86400"]
+    bff_showroom -> cosmos_sessions [label="write session record" color="#C86400" fontcolor="#C86400"]
+    bff_showroom -> showroom_ui [label="session cookie\n+ QR token" color="#C86400" fontcolor="#C86400" style=dashed]
+    bff_showroom -> cosmos_sessions [label="refresh: check\nstatus + expiresAt" color="#C86400" fontcolor="#C86400" style=dashed]
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // L2 — MARKETPLACE (internal PwC staff)
+  // ───────────────────────────────────────────────────────────────
+  subgraph cluster_marketplace {
+    label="L2 — MARKETPLACE\nInternal PwC staff · Asset catalogue · Publish / Discover / Reuse"
+    style=filled fillcolor="#E8F4E8" color="#2E7D32"
+    fontcolor="#2E7D32" fontsize=12 fontname="Helvetica-Bold"
+
+    marketplace_ui [
+      label="Marketplace Portal\n(Next.js · Entra ID SSO)\nAsset catalogue\nSearch · Try · Adopt"
+      fillcolor="#C8E6C9" color="#2E7D32"
+    ]
+    asset_registry [
+      label="Asset Registry\n(Cosmos DB + Blob)\nMetadata · Versions\nCI cert status · Ratings"
+      fillcolor="#C8E6C9" color="#2E7D32"
+      shape=cylinder
+    ]
+    ci_pipeline [
+      label="CI Certification\n(Azure DevOps)\nBuild · Scan · Sign\nPublish to ACR + PyPI"
+      fillcolor="#A5D6A7" color="#2E7D32"
+      shape=ellipse
+    ]
+
+    marketplace_ui -> asset_registry [label="discover / adopt" color="#2E7D32" fontcolor="#2E7D32"]
+    ci_pipeline -> asset_registry [label="publish certified\nasset metadata" color="#2E7D32" fontcolor="#2E7D32"]
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // L3 — KNOWLEDGE BASE (Phase 3 — deferred)
+  // ───────────────────────────────────────────────────────────────
+  subgraph cluster_kb {
+    label="L3 — KNOWLEDGE BASE  (Phase 3 — deferred)\nDomain intelligence · RAG · Per-client indexes"
+    style=filled fillcolor="#EEF4FF" color="#1B4F8A"
+    fontcolor="#1B4F8A" fontsize=12 fontname="Helvetica-Bold"
+
+    kb_ui [
+      label="Knowledge Base UI\n(per-client embed\nor standalone portal)"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+    ]
+    kb_index [
+      label="Vector Search indexes\n(Databricks Vector Search\nor Azure AI Search)\nper-client domain docs"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+      shape=cylinder
+    ]
+    kb_ingestion [
+      label="Ingestion pipeline\n(Databricks DLT\nor Logic Apps + Doc Intel\n+ Embedding model)"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+      shape=ellipse
+    ]
+
+    kb_ingestion -> kb_index [label="index docs" color="#1B4F8A" fontcolor="#1B4F8A"]
+    kb_ui -> kb_index [label="search / RAG" color="#1B4F8A" fontcolor="#1B4F8A" style=dashed]
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // L4 — SHARED SUBSTRATE (build once, reuse across all products)
+  // ───────────────────────────────────────────────────────────────
+  subgraph cluster_substrate {
+    label="L4 — SHARED SUBSTRATE  (build once · reuse across all products)"
+    style=filled fillcolor="#F5F5F5" color="#444444"
+    fontcolor="#444444" fontsize=12 fontname="Helvetica-Bold"
+
+    subgraph cluster_edge {
+      label="Identity & Edge"
+      style=filled color="#888888" fillcolor="#EEEEEE"
+      fontsize=10
+
+      entraid [label="Entra ID\n(internal staff SSO\n~400 PwC entities)" fillcolor="#E0E0E0" color="#444444"]
+      extid [label="Entra External ID\n(external guest sessions\nQR-code token validation)" fillcolor="#E0E0E0" color="#444444"]
+      frontdoor [label="Azure Front Door\n+ WAF\n(edge · TLS · DDoS)" fillcolor="#E0E0E0" color="#444444"]
+    }
+
+    subgraph cluster_gateway {
+      label="AI Gateway (shared layer)"
+      style=filled color="#888888" fillcolor="#EEEEEE"
+      fontsize=10
+
+      apim [
+        label="Azure APIM\nvalidate-jwt · rate-limit\ncontent-safety · token-quota\ncost tagging · audit log"
+        fillcolor="#D0D0D0" color="#444444"
+      ]
+    }
+
+    subgraph cluster_runtime {
+      label="Agent Runtime (chosen per agent class)"
+      style=filled color="#888888" fillcolor="#EEEEEE"
+      fontsize=10
+
+      langgraph [label="LangGraph Runtime\n(Azure Container Apps)\nLightweight orchestration\nShowroom · workflow · chat\nHITL gate · scale-to-zero" fillcolor="#D0D0D0" color="#444444"]
+      dbx_serving [label="Databricks\nModel Serving\nData-heavy agents\nlakehouse queries\ncustom model endpoints\n(optional module)" fillcolor="#C8D8E8" color="#34558B"]
+      mcp [label="MCP Tool Servers\n/rag · /extract\n/anomaly · /notify\n(ACA — versioned images)" fillcolor="#D0D0D0" color="#444444"]
+    }
+
+    subgraph cluster_ai {
+      label="AI Models"
+      style=filled color="#888888" fillcolor="#EEEEEE"
+      fontsize=10
+
+      llm [label="Foundation LLM\n(Azure OpenAI)" fillcolor="#D0D0D0" color="#444444"]
+      embed [label="Embedding Model\n(Azure OpenAI\nsemantic search)" fillcolor="#D0D0D0" color="#444444"]
+    }
+
+    subgraph cluster_databricks {
+      label="Data & ML Platform — Databricks\n(optional module · Databricks-native tenants)"
+      style=filled color="#34558B" fillcolor="#D8E4F0"
+      fontsize=10 fontcolor="#34558B"
+
+      unity_catalog [label="Unity Catalog\nGovernance plane\nPer-client catalog isolation\nLineage · fine-grained RBAC" fillcolor="#C8D8E8" color="#34558B"]
+      delta_lake [label="Delta Lake\n+ Lakehouse Federation\nGoverned data lake\nFederated queries into\nclient systems (SQL/SAP/etc)" fillcolor="#C8D8E8" color="#34558B" shape=cylinder]
+      dbx_vector [label="Databricks\nVector Search\nUnity-Catalog-governed\nvector index\n(alt: Azure AI Search)" fillcolor="#C8D8E8" color="#34558B" shape=cylinder]
+      mlflow [label="MLflow\nModel Registry\nVersioned custom\n+ fine-tuned models" fillcolor="#C8D8E8" color="#34558B"]
+      dlt [label="Delta Live Tables (DLT)\nIngestion pipeline\n(alt: Logic Apps\n+ Doc Intelligence)" fillcolor="#C8D8E8" color="#34558B" shape=ellipse]
+
+      unity_catalog -> delta_lake [color="#34558B"]
+      unity_catalog -> dbx_vector [color="#34558B"]
+      unity_catalog -> mlflow [color="#34558B"]
+      dlt -> delta_lake [label="ingest" color="#34558B" fontcolor="#34558B"]
+      dlt -> dbx_vector [label="index docs" color="#34558B" fontcolor="#34558B"]
+    }
+
+    subgraph cluster_obs {
+      label="Observability (sidecar — always on)"
+      style=filled color="#888888" fillcolor="#EEEEEE"
+      fontsize=10
+
+      appins [label="App Insights\n+ Log Analytics" fillcolor="#E8E8E8" color="#888888"]
+      langsmith [label="LangSmith\n(LLM traces\n+ prompt versions)" fillcolor="#E8E8E8" color="#888888"]
+      auditlog [label="Event Hub\n→ ADLS Gen2\n(immutable audit log)" fillcolor="#E8E8E8" color="#888888"]
+      keyvault [label="Key Vault\n(secrets · certs\nManaged Identity)" fillcolor="#E8E8E8" color="#888888"]
+    }
+
+    // substrate internal flows
+    frontdoor -> apim [label="all traffic\nrouted through" color="#444444" fontcolor="#444444"]
+    entraid -> apim [label="token validation\n(staff)" color="#444444" fontcolor="#444444"]
+    extid -> apim [label="token validation\n(guests)" color="#444444" fontcolor="#444444"]
+    apim -> langgraph [label="lightweight\nagent requests" color="#444444" fontcolor="#444444"]
+    apim -> dbx_serving [label="data-heavy\nagent requests" color="#34558B" fontcolor="#34558B" style=dashed]
+    langgraph -> mcp [color="#444444"]
+    dbx_serving -> mlflow [label="custom model\ninference" color="#34558B" fontcolor="#34558B" style=dashed]
+    dbx_serving -> delta_lake [label="lakehouse\nqueries" color="#34558B" fontcolor="#34558B" style=dashed]
+    mcp -> llm [color="#444444"]
+    mcp -> embed [color="#444444"]
+    mcp -> dbx_vector [label="RAG via\nVector Search" color="#34558B" fontcolor="#34558B" style=dashed]
+    apim -> appins [style=dashed color="#888888"]
+    langgraph -> langsmith [style=dashed color="#888888"]
+    apim -> auditlog [style=dashed color="#888888"]
+    keyvault -> apim [label="certs / keys" style=dashed color="#888888" fontcolor="#888888"]
+    keyvault -> bff_showroom [label="JWT signing key" style=dashed color="#888888" fontcolor="#888888"]
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // Cross-layer flows
+  // ───────────────────────────────────────────────────────────────
+  showroom_ui -> frontdoor [label="HTTPS\n(phone / laptop)" color="#C86400" fontcolor="#C86400"]
+  marketplace_ui -> frontdoor [label="HTTPS\n(PwC staff)" color="#2E7D32" fontcolor="#2E7D32"]
+  kb_ui -> frontdoor [label="HTTPS\n(client staff)" color="#1B4F8A" fontcolor="#1B4F8A"]
+  kb_index -> mcp [label="RAG retrieval\n(via /rag tool)" color="#1B4F8A" fontcolor="#1B4F8A"]
+  dbx_vector -> mcp [label="RAG retrieval\n(Databricks path)" color="#34558B" fontcolor="#34558B" style=dashed]
+
+  // ───────────────────────────────────────────────────────────────
+  // Boundary note
+  // ───────────────────────────────────────────────────────────────
+  boundary_note [
+    label="L1 Showroom: 1-hour scoped access\nL2 Marketplace: staff SSO, full catalogue access\nL3 Knowledge Base: per-client data isolation (Phase 3)\nL4 Substrate: build once · no duplication · version-controlled\nDatabricks module: optional — for lakehouse-native client tenants"
+    shape=note style=filled fillcolor="#FFFBE6" color="#B8860B"
+    fontcolor="#B8860B" fontsize=9
+  ]
+}

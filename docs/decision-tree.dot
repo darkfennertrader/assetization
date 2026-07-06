@@ -1,0 +1,94 @@
+digraph DecisionTree {
+    // ── Portrait binary-chain decision tree ───────────────────────────────
+    graph [
+        rankdir  = TB
+        splines  = polyline
+        nodesep  = 0.50
+        ranksep  = 0.60
+        fontname = "Helvetica,Arial,sans-serif"
+        fontsize = 16
+        bgcolor  = white
+        pad      = 0.5
+    ]
+    node [
+        fontname  = "Helvetica,Arial,sans-serif"
+        fontsize  = 14
+        margin    = "0.20,0.15"
+        style     = filled
+    ]
+    edge [
+        fontname  = "Helvetica,Arial,sans-serif"
+        fontsize  = 12
+        color     = "#555555"
+        arrowsize = 0.9
+    ]
+
+    // ─── Decision nodes (diamond, blue) ───────────────────────────────────
+    node [shape=diamond, fillcolor="#DBEAFE", color="#2563EB",
+          fontcolor="#1E3A5F", width=2.8, height=0.85]
+
+    Q1   [label="Data already\nin Databricks?"]
+    Q1b  [label="Need Foundry\nfront-end too?"]
+    Q2a  [label="Audience is\nexternal / B2B?"]
+    Q2b  [label="Audience is both\ninternal AND external?"]
+    Q3   [label="Regulated?\n(finance/pharma/EU residency)"]
+    Q4   [label="Time horizon:\nPoC only?"]
+    Q5a  [label="Distribution:\nTeams/Outlook/SharePoint?"]
+    Q5b  [label="Distribution:\ncustom web or mobile?"]
+    Q5c  [label="Distribution:\nREST API or SDK?"]
+
+    // ─── Leaf / recommendation nodes (box, green) ─────────────────────────
+    node [shape=box, style="filled,rounded", fillcolor="#DCFCE7",
+          color="#16A34A", fontcolor="#14532D", width=3.4, height=0.70]
+
+    L_B1   [label="B1/B2/B5 — Mosaic AI first\n(stay Databricks-native)"]
+    L_B4   [label="B4 — Hybrid\n(Foundry runtime + Databricks data)"]
+    L_A7   [label="A7 Multi-tenant + A3 APIM\n+ Entra External ID"]
+    L_A3b  [label="A3 APIM inner+outer tiers\n+ A2 Foundry (both audiences)"]
+    L_Ai   [label="A3 APIM + A1/A2 Foundry Agent\n(internal only)"]
+    L_P    [label="Private endpoints + CMK\n+ B4 Hybrid for Delta audit logs"]
+    L_Poc  [label="A2 Foundry Agent Service basic\nor B1 Mosaic AI notebook-first"]
+    L_Prod [label="A4 CAF Landing Zone + A1 Baseline\n+ eval pipelines"]
+    L_Bot  [label="C2 Copilot Studio\n(Teams / Outlook / SharePoint)"]
+    L_Web  [label="Foundry Agent Service\n+ App Service / ACA"]
+    L_API  [label="A3 APIM endpoint\n+ C1 MCP server"]
+    L_MCP  [label="C1 MCP server behind APIM\n(any agent client)"]
+
+    // ─── Edges — binary chain ─────────────────────────────────────────────
+
+    // Q1: data in Databricks?
+    Q1 -> Q1b [label="  YES"]
+    Q1 -> Q2a [label="  NO"]
+
+    // Q1b: need Foundry on top?
+    Q1b -> L_B4 [label="  YES"]
+    Q1b -> L_B1 [label="  NO"]
+
+    // Q2a: external audience?
+    Q2a -> L_A7 [label="  YES"]
+    Q2a -> Q2b  [label="  NO"]
+
+    // Q2b: both audiences?
+    Q2b -> L_A3b [label="  YES"]
+    Q2b -> L_Ai  [label="  NO\n(internal only)"]
+    Q2b -> Q3    [label="  Continue ->"]
+
+    // Q3: regulated?
+    Q3 -> L_P [label="  YES"]
+    Q3 -> Q4  [label="  NO"]
+
+    // Q4: PoC only?
+    Q4 -> L_Poc  [label="  YES (4-8 weeks)"]
+    Q4 -> L_Prod [label="  NO (production)"]
+    Q4 -> Q5a    [label="  Continue ->"]
+
+    // Q5: distribution channel — binary chain of 4 questions
+    Q5a -> L_Bot [label="  YES"]
+    Q5a -> Q5b   [label="  NO"]
+
+    Q5b -> L_Web [label="  YES"]
+    Q5b -> Q5c   [label="  NO"]
+
+    Q5c -> L_API [label="  YES"]
+    Q5c -> L_MCP [label="  NO\n(any agent client)"]
+}

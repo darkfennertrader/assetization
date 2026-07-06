@@ -1,0 +1,112 @@
+digraph showroom_azure {
+  graph [
+    rankdir=LR
+    fontname="Helvetica"
+    fontsize=11
+    pad=0.6
+    splines=ortho
+    bgcolor="white"
+    label="PwC Showroom — Azure Architecture (L1 + L4 Substrate)"
+    labelloc=b
+    labeljust=c
+    nodesep=0.5
+    ranksep=0.9
+  ]
+  node [fontname="Helvetica" fontsize=9 style=filled shape=box]
+  edge [fontname="Helvetica" fontsize=8]
+
+  // ─── USERS ──────────────────────────────────────────────────
+  subgraph cluster_users {
+    label="Users"
+    style=filled fillcolor="#FAFAFA" color="#AAAAAA"
+    fontsize=10 fontname="Helvetica-Bold"
+
+    presenter [label="Presenter\n(PwC salesperson\nlaptop browser)" fillcolor="#FFD8A0" color="#C86400" shape=ellipse]
+    prospect  [label="Prospect\n(external guest\nphone browser)"  fillcolor="#FFD8A0" color="#C86400" shape=ellipse]
+  }
+
+  // ─── EDGE & DNS ──────────────────────────────────────────────
+  subgraph cluster_edge {
+    label="Edge & DNS  (L4 Substrate)"
+    style=filled fillcolor="#EEEEEE" color="#444444"
+    fontsize=10 fontname="Helvetica-Bold"
+
+    dns [label="Azure DNS\nadmin.showroom.pwc.example\nshowroom.pwc.example" fillcolor="#E0E0E0" color="#444444"]
+    afd [label="Azure Front Door\nStandard/Premium\nGlobal CDN · TLS · multi-origin" fillcolor="#D0D0D0" color="#444444"]
+    waf [label="Front Door WAF Policy\nOWASP CRS 3.2\nBot manager · Rate limit" fillcolor="#D0D0D0" color="#444444" shape=diamond]
+
+    dns -> afd [label="CNAME" color="#444444"]
+    afd -> waf [label="inspect every\ninbound request" color="#444444"]
+  }
+
+  // ─── IDENTITY ────────────────────────────────────────────────
+  subgraph cluster_identity {
+    label="Identity  (L4 Substrate)"
+    style=filled fillcolor="#EEEEEE" color="#444444"
+    fontsize=10 fontname="Helvetica-Bold"
+
+    entraid [label="Entra ID\n(PwC tenant)\nSSO for Presenter Admin\nPKCE Bearer token" fillcolor="#D0D0D0" color="#444444"]
+    keyvault [label="Azure Key Vault\nRS256 JWT signing key\nManaged Identity access only\nno stored credentials" fillcolor="#D0D0D0" color="#444444" shape=cylinder]
+  }
+
+  // ─── API GATEWAY ─────────────────────────────────────────────
+  subgraph cluster_apim {
+    label="AI Gateway — Azure APIM  (L4 Substrate)"
+    style=filled fillcolor="#EEEEEE" color="#444444"
+    fontsize=10 fontname="Helvetica-Bold"
+
+    apim [label="Azure API Management\nStandard v2\nvalidate-jwt (inline RS256)\nrate-limit-by-key (sub)\nAzure AI Content Safety\ntoken-quota + cost tagging\nlog-to-eventhub (audit)" fillcolor="#C8C8C8" color="#444444"]
+    contentsafety [label="Azure AI\nContent Safety\n(inline moderation)" fillcolor="#D8D8D8" color="#444444"]
+
+    apim -> contentsafety [label="agent inputs\n+ outputs" color="#444444"]
+  }
+
+  // ─── SHOWROOM APPLICATION ────────────────────────────────────
+  subgraph cluster_showroom_app {
+    label="L1 — SHOWROOM  (rg-pwc-showroom-westeurope)"
+    style=filled fillcolor="#FFF0E0" color="#C86400"
+    fontsize=11 fontname="Helvetica-Bold"
+
+    subgraph cluster_aca {
+      label="Azure Container Apps Environment\nshowroom-aca-env  (West Europe)"
+      style=filled fillcolor="#FFE8CC" color="#C86400"
+      fontsize=10
+
+      showroom_app [label="Container App\nshowroom-app\n(Next.js — Option A: single app)\n---\n/admin/* — Presenter Admin (Entra ID)\n/demo/[id] — Prospect UI (JWT cookie)\n/enter   — cookie setter + redirect\n/api/sessions — create session\n/api/session/refresh — silent refresh\n---\nSystem Managed Identity\nscale-to-zero when idle" fillcolor="#FFD8A0" color="#C86400"]
+    }
+
+    acr [label="Azure Container Registry\npwcaimktplace.azurecr.io\nshowroom-app:<version>\nSigned images (notation)\nManaged Identity pull" fillcolor="#FFD8A0" color="#C86400" shape=cylinder]
+    cosmos [label="Azure Cosmos DB\nServerless (bursty traffic)\nDatabase: showroom\nContainer: sessions\n{ sessionId, demoIds[]\n  expiresAt, status, presenterId }\nPartition key: /presenterId\nTTL: off (managed in code)" fillcolor="#FFD8A0" color="#C86400" shape=cylinder]
+
+    showroom_app -> cosmos [label="read/write\nsession record" color="#C86400" fontcolor="#C86400"]
+    acr -> showroom_app [label="pull image\n(Managed Identity)" color="#C86400" fontcolor="#C86400" style=dashed]
+  }
+
+  // ─── OBSERVABILITY ───────────────────────────────────────────
+  subgraph cluster_obs {
+    label="Observability  (L4 Substrate — always on)"
+    style=filled fillcolor="#F5F5F5" color="#888888"
+    fontsize=10 fontname="Helvetica-Bold"
+
+    appins [label="Application Insights\n+ RUM (presenter + prospect)\nShowroomSessionCreated/Ended\ncustom events + sessionId dim" fillcolor="#E8E8E8" color="#888888"]
+    loganalytics [label="Log Analytics Workspace\nAPIM diagnostic logs\nACA container logs\nApp Insights telemetry sink" fillcolor="#E8E8E8" color="#888888"]
+    eventhub [label="Azure Event Hub\nAPIM audit stream\n(every request + response)" fillcolor="#E8E8E8" color="#888888"]
+    adls [label="ADLS Gen2\nImmutable audit log\n2-year retention\nEU residency" fillcolor="#E8E8E8" color="#888888" shape=cylinder]
+    workbook [label="Azure Workbook\nPresenter analytics embed\nSessions/week · avg duration\nmost-viewed demo" fillcolor="#E8E8E8" color="#888888"]
+
+    appins -> loganalytics [color="#888888"]
+    eventhub -> adls [label="capture" color="#888888"]
+    loganalytics -> workbook [label="query" color="#888888"]
+  }
+
+  // ─── FLOWS ───────────────────────────────────────────────────
+  presenter -> dns [label="admin.showroom.pwc.example\nHTTPS" color="#C86400" fontcolor="#C86400"]
+  prospect  -> dns [label="showroom.pwc.example\nHTTPS (QR scan)" color="#C86400" fontcolor="#C86400"]
+  waf -> apim [label="clean traffic\nforwarded" color="#444444"]
+  entraid -> apim [label="Bearer token\nvalidation (admin)" color="#444444" fontcolor="#444444"]
+  keyvault -> apim [label="RS256 public key\n(JWKS endpoint)" color="#444444" fontcolor="#444444" style=dashed]
+  keyvault -> showroom_app [label="RS256 private key\n(Managed Identity)" color="#C86400" fontcolor="#C86400" style=dashed]
+  apim -> showroom_app [label="authenticated requests\n(all routes)" color="#444444"]
+  apim -> eventhub [label="audit log\n(sidecar)" color="#888888" style=dashed]
+  showroom_app -> appins [label="RUM + events\n(sidecar)" color="#888888" style=dashed]
+}

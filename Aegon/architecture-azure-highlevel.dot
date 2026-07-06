@@ -1,0 +1,151 @@
+// Aegon AI Lighthouses — HIGH-LEVEL Architecture (v4)
+// Changes vs v3:
+//   - Generic model names (no GPT-4o pinning)
+//   - AI Gateway and Agent Runtime split into separate boxes
+//   - Per-lighthouse config notes on shared grey boxes
+//   - Showroom / Marketplace / Substrate plain labels (no ARA-A prefix)
+//   - Bottom-right acronym legend box
+
+digraph Aegon_Highlevel {
+    graph [
+        rankdir=TB
+        fontname="Segoe UI"
+        fontsize=12
+        bgcolor="#FAFAFA"
+        splines=polyline
+        nodesep=0.8
+        ranksep=0.7
+        pad=0.5
+        label="Aegon AI Lighthouses — Azure Architecture (High Level)\nThree lighthouses on one shared assetization substrate"
+        labelloc=t
+        labeljust=c
+        fontsize=14
+    ]
+    node [fontname="Segoe UI" fontsize=10 style=filled shape=box
+          margin="0.28,0.16" height=0.55]
+    edge [fontname="Segoe UI" fontsize=9 color="#555555" arrowsize=0.8 penwidth=1.5]
+
+    // ─────────────────────────────────────────────────────────────
+    // ROW 0 — USERS
+    // ─────────────────────────────────────────────────────────────
+    { rank=same; u_lh1; u_lh2; u_lh3 }
+
+    u_lh1 [label="IR Team / CEO / CFO\nInvestor calls in Teams"
+            fillcolor="#BDD7EE" color="#0070C0" fontcolor="#0070C0" penwidth=2 width=2.3]
+    u_lh2 [label="Group Finance\nFR&O · FP&A · Accounting Policy"
+            fillcolor="#C9EAC9" color="#107C10" fontcolor="#107C10" penwidth=2 width=2.3]
+    u_lh3 [label="Group Reporting\nTeam + Country Units"
+            fillcolor="#FFD9B3" color="#E66C00" fontcolor="#E66C00" penwidth=2 width=2.3]
+
+    // ─────────────────────────────────────────────────────────────
+    // ROW 1 — L1 EXPERIENCE  (Showroom)
+    // ─────────────────────────────────────────────────────────────
+    { rank=same; ui_lh1; ui_lh2; ui_lh3; lbl_showroom }
+
+    ui_lh1 [label="LH1 — IR Portal\n+ Teams Side Panel App\n(live-call Q&A + call prep)"
+             fillcolor="#BDD7EE" color="#0070C0" fontcolor="#0070C0" penwidth=2 width=2.3]
+    ui_lh2 [label="LH2 — Knowledge Base\nWeb Portal\n(document Q&A + search)"
+             fillcolor="#C9EAC9" color="#107C10" fontcolor="#107C10" penwidth=2 width=2.3]
+    ui_lh3 [label="LH3 — Anomaly Dashboard\n(KPIs + drill-down\n+ action dispatch)"
+             fillcolor="#FFD9B3" color="#E66C00" fontcolor="#E66C00" penwidth=2 width=2.3]
+
+    lbl_showroom [label="Showroom\n─────────\nPer-lighthouse UI products\nshared auth + container shell"
+                  fillcolor="#F2F2F2" color="#AAAAAA" fontcolor="#666666"
+                  style="filled,dashed" width=2.0 fontsize=9]
+
+    // ─────────────────────────────────────────────────────────────
+    // ROW 2a — AI GATEWAY  (shared — Marketplace entry point)
+    // ─────────────────────────────────────────────────────────────
+    { rank=same; auth_box; gateway; lbl_marketplace }
+
+    auth_box [label="Identity & Edge\nEntra ID · Azure Front Door · WAF\n(staff SSO + analyst guest access)"
+               fillcolor="#D9D9D9" color="#595959" width=2.2]
+
+    gateway  [label="AI Gateway  [shared — APIM]\n· Auth token validation · Rate limits & cost tagging\n· Model routing & fallback · Content-safety filter\n· MCP tool endpoint exposure · Full audit log"
+               fillcolor="#D4D4D4" color="#595959" fontcolor="#111111"
+               penwidth=2.5 width=5.8]
+
+    lbl_marketplace [label="Marketplace\n─────────\nReusable AI assets\nbuilt once, shared\nacross all LHs"
+                     fillcolor="#F2F2F2" color="#AAAAAA" fontcolor="#666666"
+                     style="filled,dashed" width=2.0 fontsize=9]
+
+    // ─────────────────────────────────────────────────────────────
+    // ROW 2b — AGENT RUNTIME  (shared — Marketplace core)
+    // ─────────────────────────────────────────────────────────────
+    { rank=same; runtime }
+
+    runtime [label="Agent Runtime  [shared — LangGraph on ACA]\n· Stateful multi-step agent orchestration · Checkpointing\n· HITL Gate (human approval before any answer/action fires)\n· Reusable MCP Tools: /rag · /extract · /anomaly · /notify"
+              fillcolor="#D0D0D0" color="#595959" fontcolor="#111111"
+              penwidth=2 width=8.5]
+
+    // ─────────────────────────────────────────────────────────────
+    // ROW 3 — AI MODELS + DATA  (Substrate)
+    // ─────────────────────────────────────────────────────────────
+    { rank=same; models; data; lbl_kb; lbl_substrate }
+
+    models [label="AI Models  [shared]\nFoundation LLM — chat + reasoning\nEmbedding model — semantic search\nSpeech STT (batch, post-call only)\nDocument OCR (ingestion pipeline)"
+             fillcolor="#D9D9D9" color="#595959" width=3.0]
+
+    data   [label="Data Stores  [shared substrate + per-LH config]\nAI Search  LH1 Knowledge Base: call transcripts + Q&A deck\n           LH2 Knowledge Base: approved Finance docs\nBlob       all raw documents + recordings\nCosmos DB  LH1: analyst profiles · LH2: approval meta\n           LH3: threshold config + HITL state\nDatabricks LH3: Tagetik QoQ financial data\nKey Vault  all secrets and certificates\nPurview    LH2: data classification + lineage"
+             fillcolor="#D9D9D9" color="#595959" width=4.4]
+
+    lbl_kb [label="Knowledge Base\n─────────\nLH1: call transcripts\n     + Q&A deck\nLH2: approved\n     Finance docs\n(AI Search indexes\non the substrate)"
+            fillcolor="#F2F2F2" color="#AAAAAA" fontcolor="#666666"
+            style="filled,dashed" width=2.0 fontsize=9]
+
+    lbl_substrate [label="Shared Substrate\n─────────\nAuth · APIM · LLM\nData stores\nObservability\nFoundation for all"
+                   fillcolor="#F2F2F2" color="#AAAAAA" fontcolor="#666666"
+                   style="filled,dashed" width=2.0 fontsize=9]
+
+    // ─────────────────────────────────────────────────────────────
+    // ROW 4 — OBSERVABILITY  (Substrate)
+    // ─────────────────────────────────────────────────────────────
+    { rank=same; obs; lbl_acronyms }
+
+    obs [label="Observability & Governance  [shared]\nApp Insights  all agent runs, tool calls, latency, errors\nLangSmith     LLM traces, evals, prompt versioning\nAudit log     Event Hub -> ADLS Gen2 (immutable)\nLog Analytics centralized workspace"
+          fillcolor="#D0D0D0" color="#595959" width=6.0]
+
+    // ─────────────────────────────────────────────────────────────
+    // ACRONYM LEGEND (bottom-right)
+    // ─────────────────────────────────────────────────────────────
+    lbl_acronyms [label="Acronym Key\n───────────────────────\nLH   Lighthouse (AI use case)\nIR   Investor Relations\nMCP  Model Context Protocol\n     (tool-calling standard)\nRAG  Retrieval-Augmented Generation\nHITL Human-in-the-Loop\nAPIM Azure API Management\nACA  Azure Container Apps\nADLS Azure Data Lake Storage Gen2\nWAF  Web Application Firewall\nSTT  Speech-to-Text\nTTS  Text-to-Speech (NOT used)\nLLM  Large Language Model\nSSO  Single Sign-On\nRBAC Role-Based Access Control\nQoQ  Quarter-on-Quarter\nKB   Knowledge Base\nPoC  Proof of Concept\nMVP  Minimum Viable Product"
+                  fillcolor="#FFFFF0" color="#999900" fontcolor="#333300"
+                  style="filled" width=2.5 fontsize=8 shape=box]
+
+    // ─────────────────────────────────────────────────────────────
+    // EDGES
+    // ─────────────────────────────────────────────────────────────
+
+    // Users -> UIs
+    u_lh1 -> ui_lh1 [color="#0070C0" penwidth=2]
+    u_lh2 -> ui_lh2 [color="#107C10" penwidth=2]
+    u_lh3 -> ui_lh3 [color="#E66C00" penwidth=2]
+
+    // UIs -> Gateway (three colours converge into shared grey)
+    ui_lh1 -> gateway [color="#0070C0" penwidth=2]
+    ui_lh2 -> gateway [color="#107C10" penwidth=2]
+    ui_lh3 -> gateway [color="#E66C00" penwidth=2]
+
+    // Auth alongside gateway
+    auth_box -> gateway [color="#595959" style=dashed]
+
+    // Gateway -> Agent Runtime
+    gateway -> runtime [color="#595959" penwidth=2]
+
+    // Runtime -> Models + Data
+    runtime -> models [color="#595959" penwidth=2]
+    runtime -> data   [color="#595959" penwidth=2]
+
+    // All -> Observability (dashed = always-on sidecar)
+    gateway -> obs [color="#595959" style=dashed penwidth=1]
+    runtime -> obs [color="#595959" style=dashed penwidth=1]
+    models  -> obs [color="#595959" style=dashed penwidth=1]
+    data    -> obs [color="#595959" style=dashed penwidth=1]
+
+    // Invisible rank-alignment edges for legend column
+    u_lh3       -> lbl_showroom    [style=invis]
+    gateway     -> lbl_marketplace [style=invis]
+    data        -> lbl_kb          [style=invis]
+    lbl_kb      -> lbl_substrate   [style=invis]
+    obs         -> lbl_acronyms    [style=invis]
+}

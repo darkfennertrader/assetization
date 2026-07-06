@@ -1,0 +1,205 @@
+digraph tenancy_general {
+  graph [
+    rankdir=LR
+    fontname="Helvetica"
+    fontsize=11
+    pad=0.4
+    splines=true
+    bgcolor="white"
+    label="PwC Platform → Client Tenant: generalised tenancy supply chain\nRuntime data never crosses the tenant boundary"
+    labelloc=b
+    labeljust=c
+    nodesep=0.5
+    ranksep=0.8
+  ]
+  node [fontname="Helvetica" fontsize=10 style=filled shape=box]
+  edge [fontname="Helvetica" fontsize=9]
+
+  // ─── PwC Tenant (left) — supply side ──────────────────────────
+  subgraph cluster_pwc {
+    label="PwC Tenant  |  Marketplace  (supply side)"
+    style=filled
+    color="#C40000"
+    fillcolor="#FFF0F0"
+    fontcolor="#C40000"
+    fontsize=12
+    fontname="Helvetica-Bold"
+
+    bicep_reg [
+      label="Bicep / Terraform\nModule Registry\n(private ACR)\nIaC for substrate + KB + Databricks module"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    acr [
+      label="Container Registry\n(signed images)\nlanggraph-runtime  ·  showroom-bff\nmcp-rag  ·  mcp-extract  ·  mcp-notify\nmarketplace-portal  ·  kb-ui"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    pypi [
+      label="Private PyPI feed\npwc-mcp-tools\npwc-observability\npwc-agent-sdk\npwc-langgraph-common"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    policy_lib [
+      label="APIM Policy Library\n+ Prompt Library\n(Git repo — versioned)\nHITL configs · rate-limit rules"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    dab_reg [
+      label="Databricks Asset Bundles\n(DAB registry)\nUnity Catalog seed defs\nDLT pipeline templates\nVector Search index defs\nMLflow model bundles"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    mlflow_pwc [
+      label="MLflow Model Registry\n(PwC-side)\nSigned baseline models\npublished via Delta Sharing\n(deploy time only)"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    pwc_cicd [
+      label="PwC Marketplace CI/CD\nbuild · sign · scan · publish"
+      fillcolor="#C40000" color="#C40000" fontcolor="white"
+      shape=ellipse
+    ]
+
+    pwc_cicd -> bicep_reg [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> acr     [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> pypi    [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> policy_lib [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> dab_reg [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> mlflow_pwc [label="publishes" color="#C40000" fontcolor="#C40000"]
+  }
+
+  // ─── Deploy pipeline (middle, dashed) ─────────────────────────
+  subgraph cluster_deploy {
+    label="Deploy time only\n(PwC engineer · JIT B2B access\nEntra ID federated identity · MFA)"
+    style=dashed
+    color="#666666"
+    fontcolor="#666666"
+    fontsize=10
+
+    deploy [
+      label="Client Deployment\nPipeline\n(Azure DevOps / GitHub Actions)"
+      fillcolor="#EEEEEE" color="#666666"
+      shape=box
+    ]
+  }
+
+  // ─── Client Tenant (right) — runtime side ──────────────────────
+  subgraph cluster_client {
+    label="Client Tenant  |  Production  (client-owned Azure subscription  ·  EU/local region)"
+    style=filled
+    color="#1B4F8A"
+    fillcolor="#EEF4FF"
+    fontcolor="#1B4F8A"
+    fontsize=12
+    fontname="Helvetica-Bold"
+
+    // Azure-native substrate — always present
+    subgraph cluster_substrate {
+      label="Shared Substrate  (Azure-native  ·  always deployed)"
+      style=filled color="#B0C8E8" fillcolor="#D8E8F8"
+      fontsize=10
+
+      entra [
+        label="Entra ID\n(client staff SSO)\nEntra External ID\n(guest / external access)"
+        fillcolor="#B0C8E8" color="#1B4F8A"
+      ]
+      frontdoor [
+        label="Azure Front Door + WAF\n(edge · TLS · DDoS)"
+        fillcolor="#B0C8E8" color="#1B4F8A"
+      ]
+      apim [
+        label="APIM Gateway\n(policies from PwC library)"
+        fillcolor="#B0C8E8" color="#1B4F8A"
+      ]
+      langgraph [
+        label="LangGraph Runtime\n(ACA — PwC image)\nLightweight orchestration\nHITL gate · scale-to-zero"
+        fillcolor="#B0C8E8" color="#1B4F8A"
+      ]
+      mcp [
+        label="MCP Tool Servers\n/rag · /extract · /anomaly · /notify\n(PwC packages via PyPI)"
+        fillcolor="#B0C8E8" color="#1B4F8A"
+      ]
+      obs [
+        label="Observability\nApp Insights · LangSmith\nEvent Hub → ADLS audit log\nKey Vault"
+        fillcolor="#B0C8E8" color="#1B4F8A"
+      ]
+
+      entra -> apim [label="token validation" color="#1B4F8A" fontcolor="#1B4F8A"]
+      frontdoor -> apim [color="#1B4F8A"]
+      apim -> langgraph [label="authenticated requests\n(lightweight agents)" color="#1B4F8A" fontcolor="#1B4F8A"]
+      langgraph -> mcp [color="#1B4F8A"]
+      langgraph -> obs [label="traces & logs" color="#1B4F8A" fontcolor="#1B4F8A"]
+    }
+
+    // Databricks module — optional
+    subgraph cluster_dbx {
+      label="Data & ML Platform — Databricks\n(optional module · lakehouse-native tenants)"
+      style=filled color="#34558B" fillcolor="#D8E4F0"
+      fontcolor="#34558B" fontsize=10
+
+      unity [
+        label="Unity Catalog\nPer-client catalog isolation\nLineage · RBAC"
+        fillcolor="#C8D8E8" color="#34558B"
+      ]
+      delta [
+        label="Delta Lake\n+ Lakehouse Federation\nGoverned data lake\nFederated queries (SQL/SAP/etc)"
+        fillcolor="#C8D8E8" color="#34558B" shape=cylinder
+      ]
+      dbx_vector [
+        label="Databricks\nVector Search\n(Unity-Catalog-governed)"
+        fillcolor="#C8D8E8" color="#34558B" shape=cylinder
+      ]
+      mlflow_client [
+        label="MLflow Model Registry\n(client-side)\nCustom / fine-tuned models"
+        fillcolor="#C8D8E8" color="#34558B"
+      ]
+      dbx_serving [
+        label="Databricks Model Serving\nData-heavy agents\nlakehouse queries\ncustom model endpoints"
+        fillcolor="#C8D8E8" color="#34558B"
+      ]
+
+      unity -> delta [color="#34558B"]
+      unity -> dbx_vector [color="#34558B"]
+      unity -> mlflow_client [color="#34558B"]
+      dbx_serving -> delta [label="lakehouse queries" color="#34558B" fontcolor="#34558B"]
+      dbx_serving -> mlflow_client [label="custom model\ninference" color="#34558B" fontcolor="#34558B"]
+    }
+
+    // Client data — never leaves
+    subgraph cluster_data {
+      label="Client Data  (never leaves this tenant)"
+      style=filled color="#1B4F8A" fillcolor="#C8D8EE"
+      fontsize=10
+
+      data [
+        label="Client business data\ndocuments · records\ndomain knowledge\nKey Vault secrets"
+        fillcolor="#C8D8EE" color="#1B4F8A"
+        shape=cylinder
+      ]
+    }
+
+    // Runtime flows inside client tenant
+    apim -> dbx_serving [label="data-heavy\nagent requests" color="#34558B" fontcolor="#34558B" style=dashed]
+    mcp -> data [label="read only" color="#1B4F8A" fontcolor="#1B4F8A"]
+    mcp -> dbx_vector [label="RAG retrieval\n(Databricks path)" color="#34558B" fontcolor="#34558B" style=dashed]
+    dbx_serving -> data [label="governed read\n(via Unity Catalog)" color="#34558B" fontcolor="#34558B" style=dashed]
+  }
+
+  // ─── Deploy-time flows (dashed grey, left → right) ─────────────
+  bicep_reg  -> deploy [label="pull IaC modules\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  acr        -> deploy [label="pull images\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  pypi       -> deploy [label="pull packages\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  policy_lib -> deploy [label="pull policies\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  dab_reg    -> deploy [label="pull DAB bundles\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  mlflow_pwc -> deploy [label="Delta Sharing\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+
+  deploy -> frontdoor  [label="provisions into\nclient tenant" color="#888888" fontcolor="#888888" style=dashed]
+  deploy -> apim       [color="#888888" style=dashed]
+  deploy -> langgraph  [color="#888888" style=dashed]
+  deploy -> mcp        [color="#888888" style=dashed]
+  deploy -> obs        [color="#888888" style=dashed]
+  deploy -> entra      [color="#888888" style=dashed]
+  deploy -> unity      [label="deploys Databricks\nmodule (if opted in)" color="#888888" fontcolor="#888888" style=dashed]
+
+  // ─── Boundary note ─────────────────────────────────────────────
+  boundary_note [
+    label="RUNTIME BOUNDARY\n← No client data crosses PwC boundary\nOnly signed artefacts flow at deploy time (pull-only)\nDatabricks module: optional — lakehouse-native tenants only\nMLflow models pulled via Delta Sharing (deploy time only)"
+    shape=note style=filled fillcolor="#FFFBE6" color="#B8860B"
+    fontcolor="#B8860B" fontsize=9
+  ]
+}

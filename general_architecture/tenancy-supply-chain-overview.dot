@@ -1,0 +1,105 @@
+digraph tenancy_overview {
+  graph [
+    rankdir=LR
+    fontname="Helvetica"
+    fontsize=12
+    pad=0.6
+    bgcolor="white"
+    splines=false
+    label="PwC Platform → Client Tenant: Tenancy Supply Chain Overview\nRuntime data never crosses the tenant boundary"
+    labelloc=b
+    labeljust=c
+    nodesep=0.8
+    ranksep=1.2
+  ]
+  node [fontname="Helvetica" fontsize=11 style=filled shape=box margin="0.3,0.2"]
+  edge [fontname="Helvetica" fontsize=10]
+
+  // ─── PwC supply side ──────────────────────────────────────────
+  subgraph cluster_pwc {
+    label="PwC Tenant  |  Marketplace"
+    style=filled
+    color="#C40000"
+    fillcolor="#FFF0F0"
+    fontcolor="#C40000"
+    fontsize=13
+    fontname="Helvetica-Bold"
+
+    supply [
+      label="Signed Artefacts\n─────────────────────\nIaC modules (Bicep / Terraform)\nContainer images (signed)\nPyPI packages\nAPIM & Prompt policies\nDatabricks Asset Bundles\nMLflow baseline models"
+      fillcolor="#FFDADA" color="#C40000" fontcolor="#333333"
+      width=3.5 height=2.8
+    ]
+  }
+
+  // ─── Deploy pipeline ──────────────────────────────────────────
+  subgraph cluster_deploy {
+    label="Deploy time only\n(pull-only · JIT B2B · MFA)"
+    style=dashed
+    color="#666666"
+    fontcolor="#666666"
+    fontsize=10
+
+    deploy [
+      label="Deployment\nPipeline"
+      fillcolor="#EEEEEE" color="#666666"
+      width=2 height=0.8
+    ]
+  }
+
+  // ─── Client tenant ────────────────────────────────────────────
+  subgraph cluster_client {
+    label="Client Tenant  |  Production  (client-owned subscription)"
+    style=filled
+    color="#1B4F8A"
+    fillcolor="#EEF4FF"
+    fontcolor="#1B4F8A"
+    fontsize=13
+    fontname="Helvetica-Bold"
+
+    substrate [
+      label="Shared Substrate\n─────────────────────\nIdentity & Edge\nAI Gateway (APIM)\nAgent Runtime (ACA)\nMCP Tools · Observability"
+      fillcolor="#D8E8F8" color="#1B4F8A" fontcolor="#333333"
+      width=3.5 height=1.8
+    ]
+
+    databricks [
+      label="Databricks Module  (optional)\n─────────────────────\nUnity Catalog · Delta Lake\nVector Search · MLflow\nDatabricks Model Serving"
+      fillcolor="#D8E4F0" color="#34558B" fontcolor="#333333"
+      style="filled,dashed"
+      width=3.5 height=1.6
+    ]
+
+    clientdata [
+      label="Client Data\n─────────────────────\nBusiness data · documents\nrecords · Key Vault secrets\n(never leaves this tenant)"
+      fillcolor="#C8D8EE" color="#1B4F8A" fontcolor="#333333"
+      shape=cylinder
+      width=3.5 height=1.4
+    ]
+  }
+
+  // ─── Flows ────────────────────────────────────────────────────
+  supply -> deploy [
+    label="pull artefacts\n(deploy time only)"
+    color="#888888" fontcolor="#888888" style=dashed
+  ]
+  deploy -> substrate [
+    label="provisions"
+    color="#888888" fontcolor="#888888" style=dashed
+  ]
+  deploy -> databricks [
+    label="provisions\n(if opted in)"
+    color="#888888" fontcolor="#888888" style=dashed
+  ]
+
+  substrate -> clientdata [label="read only" color="#1B4F8A" fontcolor="#1B4F8A"]
+  substrate -> databricks [label="data-heavy\nrequests" color="#34558B" fontcolor="#34558B" style=dashed]
+  databricks -> clientdata [label="governed read\n(Unity Catalog)" color="#34558B" fontcolor="#34558B" style=dashed]
+
+  // ─── Boundary note ────────────────────────────────────────────
+  boundary [
+    label="RUNTIME BOUNDARY\n← No client data crosses PwC boundary\nOnly signed artefacts pulled at deploy time"
+    shape=note style=filled fillcolor="#FFFBE6" color="#B8860B"
+    fontcolor="#B8860B" fontsize=9
+  ]
+}

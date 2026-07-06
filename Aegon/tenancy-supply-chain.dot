@@ -1,0 +1,129 @@
+digraph tenancy {
+  graph [
+    rankdir=LR
+    fontname="Helvetica"
+    fontsize=11
+    pad=0.4
+    splines=true
+    bgcolor="white"
+    label="PwC Marketplace → Aegon Tenant: supply-chain at deploy time\nRuntime data never crosses the tenant boundary"
+    labelloc=b
+    labeljust=c
+  ]
+  node [fontname="Helvetica" fontsize=10 style=filled shape=box]
+  edge [fontname="Helvetica" fontsize=9]
+
+  // ─── PwC Tenant B (left cluster) ───────────────────────────
+  subgraph cluster_pwc {
+    label="PwC Tenant B  |  Marketplace"
+    style=filled
+    color="#C40000"
+    fillcolor="#FFF0F0"
+    fontcolor="#C40000"
+    fontsize=12
+    fontname="Helvetica-Bold"
+
+    bicep_reg [
+      label="Bicep / Terraform\nModule Registry\n(private ACR)\npwcaimktplace.azurecr.io/iac"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    acr [
+      label="Container Registry\n(signed images)\nlanggraph-runtime:2.4.0\nmcp-rag:1.4.0\nmcp-notify:1.2.0"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    pypi [
+      label="Private PyPI feed\npwc-mcp-tools\npwc-observability"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    policy_lib [
+      label="APIM Policy Library\n& Prompt Library\n(Git repo — versioned)"
+      fillcolor="#FFDADA" color="#C40000"
+    ]
+    pwc_cicd [
+      label="PwC Marketplace CI/CD\nbuild · sign · scan · publish"
+      fillcolor="#C40000" color="#C40000" fontcolor="white"
+      shape=ellipse
+    ]
+
+    pwc_cicd -> bicep_reg [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> acr [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> pypi [label="publishes" color="#C40000" fontcolor="#C40000"]
+    pwc_cicd -> policy_lib [label="publishes" color="#C40000" fontcolor="#C40000"]
+  }
+
+  // ─── Deploy pipeline (middle) ──────────────────────────────
+  subgraph cluster_deploy {
+    label="Deploy time only\n(PwC engineer, JIT B2B access\nEntra ID federated identity, MFA)"
+    style=dashed
+    color="#666666"
+    fontcolor="#666666"
+    fontsize=10
+
+    deploy [
+      label="Aegon Deployment\nPipeline\n(Azure DevOps / GitHub Actions)"
+      fillcolor="#EEEEEE" color="#666666"
+      shape=box
+    ]
+  }
+
+  // ─── Aegon Tenant A (right cluster) ────────────────────────
+  subgraph cluster_aegon {
+    label="Aegon Tenant A  |  Production (EU region, Aegon-owned subscription)"
+    style=filled
+    color="#1B4F8A"
+    fillcolor="#EEF4FF"
+    fontcolor="#1B4F8A"
+    fontsize=12
+    fontname="Helvetica-Bold"
+
+    subgraph cluster_substrate {
+      label="Shared Substrate"
+      style=filled color="#B0C8E8" fillcolor="#D8E8F8"
+      fontsize=10
+
+      apim [label="APIM Gateway\n(policies from PwC library)" fillcolor="#B0C8E8" color="#1B4F8A"]
+      langgraph [label="LangGraph Runtime\n(ACA — PwC image)" fillcolor="#B0C8E8" color="#1B4F8A"]
+      mcp [label="MCP Tools\n(/rag · /anomaly · /notify\nPwC packages)" fillcolor="#B0C8E8" color="#1B4F8A"]
+      obs [label="Observability\n(App Insights · LangSmith\nADLS audit log)" fillcolor="#B0C8E8" color="#1B4F8A"]
+      entra [label="Entra ID\n(Aegon staff SSO)\nEntra External ID\n(guest analysts)" fillcolor="#B0C8E8" color="#1B4F8A"]
+    }
+
+    subgraph cluster_data {
+      label="Aegon Data (never leaves this tenant)"
+      style=filled color="#1B4F8A" fillcolor="#C8D8EE"
+      fontsize=10
+
+      data [
+        label="Tagetik financial data\nFinance documents\nCall transcripts\nAnalyst profiles\nKey Vault secrets"
+        fillcolor="#C8D8EE" color="#1B4F8A"
+        shape=cylinder
+      ]
+    }
+  }
+
+  // ─── Deploy-time flows (solid grey, left→right) ────────────
+  bicep_reg -> deploy [label="pull IaC modules\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  acr -> deploy [label="pull images\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  pypi -> deploy [label="pull packages\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+  policy_lib -> deploy [label="pull policies\n(deploy time)" color="#888888" fontcolor="#888888" style=dashed]
+
+  deploy -> apim [label="provisions\ninto Aegon" color="#888888" fontcolor="#888888" style=dashed]
+  deploy -> langgraph [color="#888888" style=dashed]
+  deploy -> mcp [color="#888888" style=dashed]
+  deploy -> obs [color="#888888" style=dashed]
+  deploy -> entra [color="#888888" style=dashed]
+
+  // ─── Runtime flows (inside Aegon only, solid blue) ─────────
+  entra -> apim [label="token\nvalidation" color="#1B4F8A" fontcolor="#1B4F8A"]
+  apim -> langgraph [label="authenticated\nrequests" color="#1B4F8A" fontcolor="#1B4F8A"]
+  langgraph -> mcp [color="#1B4F8A"]
+  mcp -> data [label="read only" color="#1B4F8A" fontcolor="#1B4F8A"]
+  langgraph -> obs [label="traces & logs" color="#1B4F8A" fontcolor="#1B4F8A"]
+
+  // ─── Boundary note ────────────────────────────────────────
+  runtime_boundary [
+    label="RUNTIME BOUNDARY\nNo Aegon data crosses →\nOnly signed artefacts flow\nat deploy time (pull-only)"
+    shape=note style=filled fillcolor="#FFFBE6" color="#B8860B"
+    fontcolor="#B8860B" fontsize=9
+  ]
+}

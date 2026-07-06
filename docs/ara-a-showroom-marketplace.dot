@@ -1,0 +1,153 @@
+digraph ara_a_overview {
+    graph [
+        rankdir=TB
+        fontname="Helvetica"
+        fontsize=12
+        bgcolor="#FAFAFA"
+        pad=0.5
+        splines=ortho
+        nodesep=0.6
+        ranksep=0.8
+        label="ARA-A: Marketplace · Showroom · Knowledge Base\nPwC AI Assetization — July 2026"
+        labelloc=t
+        labeljust=c
+    ]
+    node [fontname="Helvetica" fontsize=11 style=filled shape=box]
+    edge [fontname="Helvetica" fontsize=10]
+
+    // ─── SHARED SUBSTRATE ───────────────────────────────────────────────────
+    subgraph cluster_substrate {
+        label="SHARED SUBSTRATE  (build first — Weeks 1–4)"
+        style=filled
+        color="#E8F4FD"
+        fontsize=13
+        fontcolor="#1565C0"
+
+        entra [label="Entra ID\n(internal · 400+ PwC entities)" fillcolor="#BBDEFB" color="#1565C0"]
+        entraext [label="Entra External ID\n(B2B clients · showroom guests)" fillcolor="#BBDEFB" color="#1565C0"]
+        openfga [label="OpenFGA on ACA\n(fine-grained relational authz\n1-hour time-bounded relations)" fillcolor="#BBDEFB" color="#1565C0"]
+        apim [label="Azure APIM — AI Gateway\ntoken-limit · content-safety\nsemantic-cache · emit-token\nexpose-mcp-server" fillcolor="#C8E6C9" color="#2E7D32"]
+        obs [label="Observability\nApp Insights · LangSmith\nLog Analytics · Event Hub → ADLS" fillcolor="#FFF9C4" color="#F57F17"]
+    }
+
+    // ─── MARKETPLACE ────────────────────────────────────────────────────────
+    subgraph cluster_marketplace {
+        label="MARKETPLACE  (Priority 1 — Internal)"
+        style=filled
+        color="#E8F5E9"
+        fontsize=13
+        fontcolor="#2E7D32"
+
+        coreAssets [label="CORE Assets (Lego pieces)\n/summarize  /extract  /classify\n/embed  /translate  /rag\nauth-wrapper  data-transformers\nBFF utilities" fillcolor="#A5D6A7" color="#1B5E20"]
+        ciGate [label="CI Certification Gate\nRuff · mypy · pytest ≥80%\ngitleaks · semver · RAI checklist\nasset.toml validation" fillcolor="#C8E6C9" color="#2E7D32"]
+        artifacts [label="Artifact Stores\nAzure Artifacts (pip/npm)\nACR (Docker)\nFoundry Model Registry" fillcolor="#C8E6C9" color="#2E7D32"]
+        metaSearch [label="Metadata + Discovery\nasset.toml per asset\nAzure AI Search (hybrid index)\nMicrosoft Purview (lifecycle)" fillcolor="#C8E6C9" color="#2E7D32"]
+        mktUI [label="Discovery UI\n(Azure Container Apps)\nBUILD ONLY AFTER ≥50 assets" fillcolor="#DCEDC8" color="#558B2F" style="filled,dashed"]
+    }
+
+    // ─── SHOWROOM ────────────────────────────────────────────────────────────
+    subgraph cluster_showroom {
+        label="SHOWROOM  (Priority 1 — External)"
+        style=filled
+        color="#FFF8E1"
+        fontsize=13
+        fontcolor="#E65100"
+
+        showFE [label="Front-end\nNext.js / TypeScript\non ACA or App Service\n[owner: Michael]" fillcolor="#FFCC80" color="#E65100"]
+        qrFlow [label="1-Hour Demo Credential Flow\nPresenter generates QR code\nSigned JWT  exp=now+3600s\nScope = this demo only\nAuto-expiry · manual invalidation\nFull audit log in App Insights" fillcolor="#FFE0B2" color="#E65100"]
+        showDemos [label="Demo Catalogue\n(curated use cases)\ncomposed from CORE Assets" fillcolor="#FFCC80" color="#E65100"]
+        rum [label="Real-User Metrics\nApp Insights SDK (RUM)\nSession duration · feature use\nPower BI dashboard" fillcolor="#FFE0B2" color="#E65100"]
+    }
+
+    // ─── KNOWLEDGE BASE (deferred) ───────────────────────────────────────────
+    subgraph cluster_kb {
+        label="KNOWLEDGE BASE  (Priority 3 — Deferred)"
+        style=filled
+        color="#F3E5F5"
+        fontsize=13
+        fontcolor="#6A1B9A"
+
+        delta [label="Azure Databricks\nDelta Lake + Unity Catalog\nDLT ingestion pipelines" fillcolor="#E1BEE7" color="#6A1B9A" style="filled,dashed"]
+        vecSearch [label="Mosaic AI Vector Search\n(semantic retrieval)" fillcolor="#E1BEE7" color="#6A1B9A" style="filled,dashed"]
+        genie [label="Genie Spaces\n(text-to-SQL)" fillcolor="#E1BEE7" color="#6A1B9A" style="filled,dashed"]
+        docIntel [label="Azure Document Intelligence\n(OCR · extraction)" fillcolor="#E1BEE7" color="#6A1B9A" style="filled,dashed"]
+        kbMCP [label="/knowledge-search\nMCP server via APIM\n(plugs in as a CORE asset)" fillcolor="#CE93D8" color="#6A1B9A" style="filled,dashed"]
+    }
+
+    // ─── AGENT RUNTIME ───────────────────────────────────────────────────────
+    subgraph cluster_runtime {
+        label="AGENT RUNTIME  (default: ACA + LangGraph)"
+        style=filled
+        color="#E3F2FD"
+        fontsize=13
+        fontcolor="#0D47A1"
+
+        langGraph [label="LangGraph + LangChain\non Azure Container Apps\n[owner: Raimondo]" fillcolor="#90CAF9" color="#0D47A1"]
+        cosmos [label="Azure Cosmos DB\n(conversation memory\nagent state)" fillcolor="#BBDEFB" color="#0D47A1"]
+        dapr [label="Dapr\n(pub/sub · state)" fillcolor="#BBDEFB" color="#0D47A1"]
+    }
+
+    // ─── MODELS ─────────────────────────────────────────────────────────────
+    subgraph cluster_models {
+        label="MODELS"
+        style=filled
+        color="#ECEFF1"
+        fontsize=13
+        fontcolor="#263238"
+
+        aoai [label="Azure OpenAI\nGPT-4o PTU primary\nembeddings" fillcolor="#CFD8DC" color="#263238"]
+        foundryModels [label="Foundry Models\nMistral · Llama · Phi" fillcolor="#CFD8DC" color="#263238"]
+        litellm [label="LiteLLM proxy\n(vendor-neutral fallback\nAnthropic · Mistral · Bedrock)" fillcolor="#CFD8DC" color="#263238"]
+    }
+
+    // ─── EDGES ───────────────────────────────────────────────────────────────
+
+    // Identity → Gateway
+    entra -> apim [label="RBAC · managed identity"]
+    entraext -> apim [label="guest sessions"]
+    openfga -> apim [label="fine-grained check"]
+
+    // Gateway → Runtime
+    apim -> langGraph [label="authenticated calls"]
+    apim -> coreAssets [label="MCP tools exposed"]
+
+    // CI Gate → Artifacts → Search
+    ciGate -> artifacts [label="on merge to main"]
+    artifacts -> metaSearch [label="asset.toml indexed"]
+    metaSearch -> mktUI [label="query API → (later) UI"]
+
+    // Runtime → Assets
+    langGraph -> coreAssets [label="tool calls via MCP"]
+    langGraph -> cosmos [label="state / memory"]
+    langGraph -> dapr [label="pub/sub"]
+
+    // Assets → Models
+    coreAssets -> aoai [label="LLM calls"]
+    coreAssets -> foundryModels [label="model routing"]
+    aoai -> litellm [label="fallback"]
+    foundryModels -> litellm [label="fallback"]
+
+    // Showroom
+    showFE -> apim [label="API calls"]
+    qrFlow -> entraext [label="guest invitation"]
+    showFE -> showDemos [label="renders"]
+    showDemos -> coreAssets [label="assembled from"]
+    showFE -> rum [label="App Insights SDK"]
+    rum -> obs [label="telemetry"]
+
+    // Knowledge Base (dashed — deferred)
+    docIntel -> delta [style=dashed]
+    delta -> vecSearch [style=dashed]
+    delta -> genie [style=dashed]
+    vecSearch -> kbMCP [style=dashed]
+    genie -> kbMCP [style=dashed]
+    kbMCP -> apim [style=dashed label="when built"]
+
+    // Observability feeds
+    apim -> obs [label="emit-token-metric"]
+    langGraph -> obs [label="LangSmith traces"]
+
+    // ─── RANKING HINTS ───────────────────────────────────────────────────────
+    { rank=same; entra; entraext; openfga }
+    { rank=same; aoai; foundryModels; litellm }
+}
