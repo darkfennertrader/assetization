@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#this is the architecture I'll share !/usr/bin/env bash
 # Regenerate ALL user-facing artefacts in showroom/phase1/.
 # Run by the user: bash showroom/phase1/build_all.sh
 set -euo pipefail

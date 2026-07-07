@@ -1,0 +1,18 @@
+% titlepage.tex — per-document LaTeX for devops-runbook.pdf
+% Produces a fully centred (H + V) title page and starts §1 on page 2.
+% The subtitle is hardcoded here because pandoc's default article
+% template does not expose \@subtitle; only \@title and \@date are safe.
+
+\renewcommand{\maketitle}{%
+  \begin{titlepage}
+    \null\vfill
+    \begin{center}
+      {\LARGE\bfseries \@title\par}
+      \vspace{0.8em}
+      {\large DevOps Infrastructure Runbook\par}
+      \vspace{1.5em}
+      {\normalsize \@date\par}
+    \end{center}
+    \vfill\null
+  \end{titlepage}
+}

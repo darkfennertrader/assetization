@@ -42,7 +42,7 @@ digraph phase1 {
 
   // ── ACA environment ───────────────────────────────────────────────────────
   subgraph cluster_acaenv {
-    label="ACA Environment   cae-pwc-showroom-dev-we\nConsumption · West Europe · no VNet · shared Log Analytics"
+    label="ACA Environment   cae-pwc-showroom-<env>-<region>\n(shown: dev; identical stamps in tst and prod)\nConsumption · no VNet · Log Analytics: log-pwc-showroom-<env>-<region>"
     style=filled
     color="#1B4F8A"
     fillcolor="#EEF3FA"
@@ -51,7 +51,7 @@ digraph phase1 {
 
     // ── Showroom ACA app ─────────────────────────────────────────────────
     subgraph cluster_showroom {
-      label="ACA app: ca-pwc-showroom-dev-we\nNext.js server (Node) · HTTPS ingress · scale 0-5\nFE served as static assets from this container image"
+      label="ACA app: ca-pwc-showroom-<env>-<region>\nNext.js server (Node) · HTTPS ingress · scale 0-5\nFE served as static assets from this container image"
       style=filled
       color="#1B4F8A"
       fillcolor="#E8F0FB"
@@ -80,7 +80,7 @@ digraph phase1 {
           width=3.2 height=0.85
         ]
         groupChk [
-          label="Session middleware\n+ Group check (FinCrime-Showroom)"
+          label="Session middleware\n+ Group check (FINCRIME_GROUP_OID)"
           fillcolor="#AAAAAA" color="#444444" fontcolor="#111111"
           width=3.2 height=0.85
         ]
@@ -111,7 +111,7 @@ digraph phase1 {
 
   // ── Key Vault ─────────────────────────────────────────────────────────────
   keyvault [
-    label="Azure Key Vault\nkv-pwc-showroom-dev-we\n(showroom-client-secret · <demo>-client-secret · ...)"
+    label="Azure Key Vault\nkv-pwc-showroom-<env>-<region>\n(showroom-client-secret only)"
     fillcolor="#FFF3E0" color="#E65100" fontcolor="#333333"
     width=3.8 height=1.1
   ]
