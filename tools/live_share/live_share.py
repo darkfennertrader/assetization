@@ -494,6 +494,32 @@ HTML = """<!DOCTYPE html>
     }
   };
 
+  // ── Paste sanitizer ────────────────────────────────────────────────────────
+  // Strip Markdown emphasis markers that chat/AI apps inject into the plain-text
+  // clipboard fallback (bold __x__, **x**, inline `code`, italic _x_, *x*).
+  // Fires only on paste — characters typed directly are never touched.
+  function stripMarkdown(s) {
+    return s
+      .replace(/`([^`\n]+)`/g,        "$1")         // `inline code`
+      .replace(/\*\*([\s\S]+?)\*\*/g, "$1")         // **bold**
+      .replace(/__([\s\S]+?)__/g,     "$1")         // __bold__
+      .replace(/(^|[\s(])\*([^\s*][\s\S]*?[^\s*]|\S)\*(?=[\s.,;:!?)\n]|$)/gm, "$1$2") // *italic*
+      .replace(/(^|[\s(])_([^\s_][\s\S]*?[^\s_]|\S)_(?=[\s.,;:!?)\n]|$)/gm,   "$1$2"); // _italic_
+  }
+
+  editor.addEventListener("paste", (e) => {
+    const cd = e.clipboardData || window.clipboardData;
+    if (!cd) return;                          // ancient browser — let default paste happen
+    const raw = cd.getData("text/plain");
+    if (!raw) return;
+    e.preventDefault();
+    const clean = stripMarkdown(raw);
+    const start = editor.selectionStart;
+    const end   = editor.selectionEnd;
+    editor.setRangeText(clean, start, end, "end");
+    editor.dispatchEvent(new Event("input", { bubbles: true })); // trigger push + char count
+  });
+
   // ── Text push ──────────────────────────────────────────────────────────────
   editor.addEventListener("input", () => {
     updateCharCount();
