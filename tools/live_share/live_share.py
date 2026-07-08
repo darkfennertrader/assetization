@@ -23,6 +23,7 @@ import socket
 import sys
 import threading
 import time
+import uuid
 from urllib.parse import urlparse
 
 
@@ -87,6 +88,11 @@ if "--print-hosts" in sys.argv:
 # ── Shared state ───────────────────────────────────────────────────────────────
 _lock = threading.Lock()
 
+# Unique token generated once per process start.
+# The client compares this on every poll; a changed value means the server
+# restarted and the tab should reload itself automatically.
+_BOOT_ID: str = uuid.uuid4().hex[:12]
+
 _state = {
     "text": "",
     "version": 0,
@@ -106,6 +112,7 @@ def _side_from_request(handler) -> str:
 
 def _state_for_side(side: str) -> dict:
     d = dict(_state)
+    d["boot_id"] = _BOOT_ID
     d["my_role"] = "source" if d["source_side"] == side else "receiver"
     d["files"] = [
         {
@@ -158,11 +165,15 @@ def _parse_multipart(content_type: str, body: bytes):
 
 
 # ── Embedded HTML / CSS / JS ───────────────────────────────────────────────────
-HTML = """<!DOCTYPE html>
+HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Prevent any browser from caching this shell page -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Live Share</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -404,6 +415,7 @@ HTML = """<!DOCTYPE html>
   let pushTimer     = null;
   let toggling      = false;
   let knownFiles    = [];   // last seen file list (for change detection)
+  let _knownBootId  = null; // detect server restart → auto-reload tab
 
   // ── Role helpers ───────────────────────────────────────────────────────────
   function applyRole(r) {
@@ -552,6 +564,17 @@ HTML = """<!DOCTYPE html>
       const res  = await fetch("/text");
       if (!res.ok) { setStatus("error " + res.status, true); return; }
       const data = await res.json();
+
+      // ── Boot-id check: auto-reload when server has been restarted ──────────
+      if (data.boot_id) {
+        if (_knownBootId === null) {
+          _knownBootId = data.boot_id;
+        } else if (data.boot_id !== _knownBootId) {
+          setStatus("server restarted — reloading…", false);
+          setTimeout(() => location.reload(), 400);
+          return;
+        }
+      }
 
       if (data.my_role !== myRole) {
         applyRole(data.my_role);

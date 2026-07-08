@@ -1,0 +1,301 @@
+digraph cicd_pipeline {
+    graph [
+        rankdir = TB
+        fontname = "Helvetica"
+        fontsize = 11
+        splines = polyline
+        nodesep = 0.7
+        ranksep = 0.6
+        bgcolor = "white"
+        label = "CI/CD — Three Pipelines: Build+Dev · Promote to Tst · Promote to Prod\nOne codebase · One registry · Three environments · On-demand promotion"
+        labelloc = t
+        labeljust = c
+        fontsize = 13
+    ]
+    node [
+        fontname = "Helvetica"
+        fontsize = 10
+        shape = rect
+        style = "filled,rounded"
+        fillcolor = "#F5F5F5"
+        color = "#555555"
+        penwidth = 1.5
+    ]
+    edge [
+        fontname = "Helvetica"
+        fontsize = 9
+        color = "#555555"
+        penwidth = 1.5
+    ]
+
+    /* ═══════════════════════════════════════════════════
+       PRE-PIPELINE: developer PR checks (before merge)
+       ═══════════════════════════════════════════════════ */
+
+    developer [
+        label = "Developer\nPull Request"
+        shape = oval
+        fillcolor = "#FFFFFF"
+        color = "#333333"
+    ]
+
+    precheck [
+        label = "Pre-Merge Checks\n(run on every PR)\n───────────────────────\n• Lint + type check\n• Unit tests\n• SAST (static security scan)\n• Secret scan"
+        fillcolor = "#E0F2F1"
+        color = "#00695C"
+    ]
+
+    merge_fail [
+        label = "PR blocked\n(merge denied)"
+        shape = rect
+        style = "filled,rounded,dashed"
+        fillcolor = "#FFEBEE"
+        color = "#B71C1C"
+    ]
+
+    main_branch [
+        label = "Merge to main"
+        shape = oval
+        fillcolor = "#FFFFFF"
+        color = "#333333"
+    ]
+
+    /* ═══════════════════════════════════════════════════
+       PIPELINE 1 — Build + Deploy Dev (automatic)
+       ═══════════════════════════════════════════════════ */
+
+    subgraph cluster_p1 {
+        label = "Pipeline 1 — Build + Deploy Dev   (automatic on merge)"
+        style = filled
+        fillcolor = "#F3F9FF"
+        color = "#1565C0"
+        fontsize = 11
+        fontname = "Helvetica"
+        fontcolor = "#1565C0"
+
+        build [
+            label = "BUILD\n──────────────────────\n• Checkout source\n• Unit + integration build tests\n• Build container image\n• Scan image (Trivy — CRITICAL/HIGH CVE)\n• Push image:tag → Shared ACR\n• Record immutable digest"
+            fillcolor = "#D6E8FB"
+            color = "#1565C0"
+        ]
+
+        build_fail [
+            label = "Pipeline 1 fails\n(no image pushed)"
+            shape = rect
+            style = "filled,rounded,dashed"
+            fillcolor = "#FFEBEE"
+            color = "#B71C1C"
+        ]
+
+        deploy_dev [
+            label = "DEPLOY → dev\n──────────────────────\n• Pull image:tag from ACR\n• Update ACA revision (dev)\n• Apply dev configuration\n  KEY_VAULT_URL = kv-dev\n  (dev env-vars + dev MI)"
+            fillcolor = "#FFF9C4"
+            color = "#F57F17"
+        ]
+
+        test_dev [
+            label = "TEST dev\n──────────────────────\n• Smoke tests (health probe)\n• Integration tests\n  (Key Vault reachable,\n   Entra sign-in works)"
+            fillcolor = "#E0F2F1"
+            color = "#00695C"
+        ]
+
+        test_dev_fail [
+            label = "Pipeline 1 fails\n(dev environment\nbroke — investigate)"
+            shape = rect
+            style = "filled,rounded,dashed"
+            fillcolor = "#FFEBEE"
+            color = "#B71C1C"
+        ]
+
+        dev_ready [
+            label = "image:tag ready\nfor promotion\n(sitting in ACR)"
+            shape = oval
+            fillcolor = "#E8F5E9"
+            color = "#2E7D32"
+        ]
+    }
+
+    /* ═══════════════════════════════════════════════════
+       PIPELINE 2 — Promote to Tst (on demand)
+       ═══════════════════════════════════════════════════ */
+
+    subgraph cluster_p2 {
+        label = "Pipeline 2 — Promote to Tst   (triggered on demand — choose any image:tag)"
+        style = filled
+        fillcolor = "#FFFDE7"
+        color = "#F57F17"
+        fontsize = 11
+        fontname = "Helvetica"
+        fontcolor = "#E65100"
+
+        manual_tst [
+            label = "Manual trigger\nby engineer / tech lead\n(select image:tag to promote)"
+            shape = oval
+            fillcolor = "#FFFFFF"
+            color = "#E65100"
+        ]
+
+        deploy_tst [
+            label = "DEPLOY → tst\n──────────────────────\n• Same image:tag (no rebuild)\n• Update ACA revision (tst)\n• Apply tst configuration\n  KEY_VAULT_URL = kv-tst\n  (tst env-vars + tst MI)"
+            fillcolor = "#FFF9C4"
+            color = "#F57F17"
+        ]
+
+        test_tst [
+            label = "TEST tst\n──────────────────────\n• Stakeholder UAT\n• Performance / load test\n• DAST (OWASP ZAP scan)"
+            fillcolor = "#E0F2F1"
+            color = "#00695C"
+        ]
+
+        test_tst_fail [
+            label = "Pipeline 2 fails\n(tst failed — fix and\nrepromote via Pipeline 2)"
+            shape = rect
+            style = "filled,rounded,dashed"
+            fillcolor = "#FFEBEE"
+            color = "#B71C1C"
+        ]
+
+        tst_ready [
+            label = "image:tag validated\nin tst — ready\nfor Prod promotion"
+            shape = oval
+            fillcolor = "#E8F5E9"
+            color = "#2E7D32"
+        ]
+    }
+
+    /* ═══════════════════════════════════════════════════
+       PIPELINE 3 — Promote to Prod (on demand)
+       ═══════════════════════════════════════════════════ */
+
+    subgraph cluster_p3 {
+        label = "Pipeline 3 — Promote to Prod   (triggered on demand — approval required)"
+        style = filled
+        fillcolor = "#FCE4EC"
+        color = "#880E4F"
+        fontsize = 11
+        fontname = "Helvetica"
+        fontcolor = "#880E4F"
+
+        manual_prod [
+            label = "Manual trigger\n+ Approval Gate\n(tech lead + release manager\nmust both approve)"
+            shape = oval
+            fillcolor = "#FFFFFF"
+            color = "#880E4F"
+        ]
+
+        deploy_prod [
+            label = "DEPLOY → prod (progressive)\n─────────────────────────────\n• Same image:tag (no rebuild)\n• Create new ACA revision\n• Shift 10% traffic → new revision\n• Apply prod configuration\n  KEY_VAULT_URL = kv-prod\n  (prod env-vars + prod MI)"
+            fillcolor = "#FCE4EC"
+            color = "#880E4F"
+        ]
+
+        health_check [
+            label = "Health check\n5-10 min observation\n────────────────\nHealth probe +\nerror-rate monitor"
+            shape = diamond
+            fillcolor = "#FFE0B2"
+            color = "#E65100"
+            width = 2.6
+            height = 1.4
+        ]
+
+        rollback [
+            label = "AUTO-ROLLBACK\n─────────────────\n• Shift 100% traffic\n  back to previous revision\n• Deactivate new revision\n• Alert on-call channel\n• Pipeline 3 marked failed"
+            shape = rect
+            style = "filled,rounded,dashed"
+            fillcolor = "#FFEBEE"
+            color = "#B71C1C"
+        ]
+
+        promote_full [
+            label = "Progressive completion\n─────────────────────\n50% → 100% traffic shift\nto new revision"
+            fillcolor = "#E8F5E9"
+            color = "#2E7D32"
+        ]
+
+        audit [
+            label = "Audit Record\n─────────────────\ncommit · image:tag\ndigest · approvers\ntimestamp per env"
+            shape = note
+            fillcolor = "#EDE7F6"
+            color = "#4527A0"
+        ]
+    }
+
+    /* ═══════════════════════════════════════════════════
+       SHARED ACR
+       ═══════════════════════════════════════════════════ */
+
+    acr [
+        label = "Shared Container Registry (ACR)\n────────────────────────────────────\nimage:tag   sha256:…  (immutable)\nAll pipelines pull from here"
+        shape = cylinder
+        fillcolor = "#E8F5E9"
+        color = "#2E7D32"
+        fontsize = 10
+    ]
+
+    /* ═══════════════════════════════════════════════════
+       PER-ENVIRONMENT KEY VAULTS
+       ═══════════════════════════════════════════════════ */
+
+    subgraph cluster_kv {
+        label = "Per-Environment Key Vaults + Managed Identities"
+        style = dashed
+        color = "#9E9E9E"
+        fontsize = 9
+        fontname = "Helvetica"
+
+        kv_dev  [ label = "Key Vault dev\n+ dev MI"  shape = rect fillcolor = "#F5F5F5" color = "#9E9E9E" ]
+        kv_tst  [ label = "Key Vault tst\n+ tst MI"  shape = rect fillcolor = "#F5F5F5" color = "#9E9E9E" ]
+        kv_prod [ label = "Key Vault prod\n+ prod MI" shape = rect fillcolor = "#F5F5F5" color = "#9E9E9E" ]
+    }
+
+    /* ═══════════════════════════════════════════════════
+       EDGES — pre-pipeline
+       ═══════════════════════════════════════════════════ */
+
+    developer   -> precheck
+    precheck    -> merge_fail   [ label = "fail" color = "#B71C1C" fontcolor = "#B71C1C" style = dashed ]
+    precheck    -> main_branch  [ label = "pass" color = "#2E7D32" fontcolor = "#2E7D32" ]
+
+    /* ═══════════════════════════════════════════════════
+       EDGES — Pipeline 1
+       ═══════════════════════════════════════════════════ */
+
+    main_branch -> build        [ label = "auto-trigger" ]
+    build       -> acr          [ label = "push once\nimage:tag" color = "#2E7D32" fontcolor = "#2E7D32" ]
+    build       -> build_fail   [ label = "scan/test\nfail" color = "#B71C1C" fontcolor = "#B71C1C" style = dashed ]
+    acr         -> deploy_dev   [ label = "pull image:tag" style = dashed ]
+    deploy_dev  -> test_dev
+    test_dev    -> test_dev_fail [ label = "fail" color = "#B71C1C" fontcolor = "#B71C1C" style = dashed ]
+    test_dev    -> dev_ready     [ label = "pass" color = "#2E7D32" fontcolor = "#2E7D32" ]
+
+    /* ═══════════════════════════════════════════════════
+       EDGES — Pipeline 2
+       ═══════════════════════════════════════════════════ */
+
+    dev_ready   -> manual_tst   [ label = "engineer picks\nimage:tag from ACR\nwhen ready" color = "#E65100" fontcolor = "#E65100" ]
+    manual_tst  -> deploy_tst
+    acr         -> deploy_tst   [ label = "pull same\nimage:tag" style = dashed ]
+    deploy_tst  -> test_tst
+    test_tst    -> test_tst_fail [ label = "fail" color = "#B71C1C" fontcolor = "#B71C1C" style = dashed ]
+    test_tst    -> tst_ready     [ label = "pass" color = "#2E7D32" fontcolor = "#2E7D32" ]
+
+    /* ═══════════════════════════════════════════════════
+       EDGES — Pipeline 3
+       ═══════════════════════════════════════════════════ */
+
+    tst_ready   -> manual_prod  [ label = "release manager\npicks image:tag\nwhen ready" color = "#880E4F" fontcolor = "#880E4F" ]
+    manual_prod -> deploy_prod
+    acr         -> deploy_prod  [ label = "pull same\nimage:tag" style = dashed ]
+    deploy_prod -> health_check
+    health_check -> rollback    [ label = "health fail\nor error spike" color = "#B71C1C" fontcolor = "#B71C1C" style = dashed ]
+    health_check -> promote_full [ label = "healthy" color = "#2E7D32" fontcolor = "#2E7D32" ]
+    promote_full -> audit
+
+    /* ═══════════════════════════════════════════════════
+       EDGES — Key Vault secret reads (runtime, dashed)
+       ═══════════════════════════════════════════════════ */
+
+    deploy_dev  -> kv_dev  [ label = "runtime:\nreads secrets" style = dashed color = "#9E9E9E" fontcolor = "#9E9E9E" ]
+    deploy_tst  -> kv_tst  [ label = "runtime:\nreads secrets" style = dashed color = "#9E9E9E" fontcolor = "#9E9E9E" ]
+    deploy_prod -> kv_prod [ label = "runtime:\nreads secrets" style = dashed color = "#9E9E9E" fontcolor = "#9E9E9E" ]
+}
