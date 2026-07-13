@@ -1,0 +1,56 @@
+digraph decision_tree {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=11
+    label="Agent Orchestration Decision Tree\nLangGraph vs Agent Core on Aegon Launchpad"
+    labelloc=t
+    pad=0.4
+    nodesep=0.5
+    ranksep=0.7
+    bgcolor="#FAFAFA"
+  ]
+  node [fontname="Helvetica" fontsize=10 shape=box style="filled,rounded" margin="0.2,0.1"]
+  edge [fontname="Helvetica" fontsize=9]
+
+  start [label="I need to build an agent\nfor a lighthouse use case"
+         fillcolor="#DAE8FF" color="#003399"]
+
+  q1 [label="Does the agent need to call\nan external SaaS tool or API\noutside the Aegon AWS environment?"
+      shape=diamond fillcolor="#FFF5AA" color="#AA8800"]
+
+  q2 [label="Does the agent need to broker\nagent-to-agent (A2A) calls to\nanother Aegon-managed agent?"
+      shape=diamond fillcolor="#FFF5AA" color="#AA8800"]
+
+  q3 [label="Does the agent need Aegon-managed\nMCP wiring with corporate auth\n(not DIY HTTP)?"
+      shape=diamond fillcolor="#FFF5AA" color="#AA8800"]
+
+  q4 [label="Does the team have AWS Agent Core\nexperience or need ARB pre-blessed\npatterns with minimal architecture work?"
+      shape=diamond fillcolor="#FFF5AA" color="#AA8800"]
+
+  ans_lg [label="Use LangGraph in Business VPC\n\n- Orchestrator runs in your ECS / Lambda\n- All tool calls are local Python functions\n- Only LLM calls cross to Launchpad router\n- Full observability in your stack\n- Easier local development + testing\n- Portable and PwC-standard"
+          fillcolor="#DAFFD6" color="#007700" shape=box]
+
+  ans_ac [label="Use Agent Core blueprint\n\n- Provision via Launchpad UI\n- Agent runs in Launchpad VPC\n- Tool calls cross Transit Gateway\n- Pre-blessed ARB pattern\n- Supports MCP / A2A / external gateway\n- Limited local development story"
+          fillcolor="#FFDADA" color="#CC0000" shape=box]
+
+  ans_hybrid [label="Hybrid: LangGraph orchestrator\n+ Agent Core for specific steps\n\n- LangGraph handles main flow\n- Delegate to Agent Core only for\n  the MCP / A2A step\n- Everything else stays local"
+              fillcolor="#FFF5AA" color="#AA8800" shape=box]
+
+  note_router [label="ALWAYS REQUIRED regardless of choice:\n- Router blueprint (ALB + HMAC)\n- Guardrail blueprint\n- Per-lighthouse API key in Secrets Manager"
+               shape=note fillcolor="#EEF0FF" color="#003399" fontsize=9]
+
+  start -> q1
+  q1 -> q2   [label="no"]
+  q1 -> q3   [label="yes"]
+  q2 -> q4   [label="no"]
+  q2 -> ans_ac [label="yes -- A2A\nrequired"]
+  q3 -> ans_ac [label="yes -- MCP\nrequired"]
+  q3 -> q4   [label="no"]
+  q4 -> ans_lg [label="no / team is\ncomfortable with Python"]
+  q4 -> ans_hybrid [label="yes -- want\nARB blueprints"]
+
+  ans_lg     -> note_router [style=dashed color="#888888"]
+  ans_ac     -> note_router [style=dashed color="#888888"]
+  ans_hybrid -> note_router [style=dashed color="#888888"]
+}

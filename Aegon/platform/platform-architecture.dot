@@ -1,0 +1,143 @@
+digraph platform_architecture {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=11
+    label="Aegon Launchpad Platform Architecture\nAccount topology and runtime traffic flow"
+    labelloc=t
+    pad=0.4
+    nodesep=0.6
+    ranksep=0.9
+    bgcolor="#FAFAFA"
+  ]
+  node [fontname="Helvetica" fontsize=10 shape=box style="filled,rounded" margin="0.2,0.1"]
+  edge [fontname="Helvetica" fontsize=9]
+
+  /* ── LEGEND ───────────────────────────────────────────── */
+  subgraph cluster_legend {
+    label="Legend"
+    style=filled
+    color="#CCCCCC"
+    fillcolor="#F5F5F5"
+    fontsize=9
+    rank=sink
+
+    leg_lp  [label="Launchpad-owned"  fillcolor="#FFDADA" color="#CC0000"]
+    leg_pwc [label="PwC-owned"        fillcolor="#DAFFD6" color="#007700"]
+    leg_sh  [label="Shared / AWS"     fillcolor="#DAE8FF" color="#003399"]
+    leg_ext [label="External system"  fillcolor="#F0F0F0" color="#888888"]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     CICD ACCOUNT  (Launchpad-owned)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_cicd {
+    label="CI/CD Account  (Launchpad-owned)"
+    style=filled
+    fillcolor="#FFF0F0"
+    color="#CC0000"
+    fontsize=10
+
+    github   [label="GitHub\n(Launchpad repo)" fillcolor="#FFDADA" color="#CC0000"]
+    cp       [label="CodePipeline\n+ CodeBuild"  fillcolor="#FFDADA" color="#CC0000"]
+    ecr      [label="ECR\n(container images)"   fillcolor="#FFDADA" color="#CC0000"]
+    snyk     [label="Snyk / SonarCube\n(SAST)"  fillcolor="#FFDADA" color="#CC0000"]
+
+    github -> cp    [label="webhook"]
+    cp     -> snyk  [label="scan"]
+    cp     -> ecr   [label="push image"]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     LAUNCHPAD CORE ACCOUNT  (Launchpad-owned)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_core {
+    label="Launchpad Core Account  (Launchpad-owned)"
+    style=filled
+    fillcolor="#FFF8F8"
+    color="#CC0000"
+    fontsize=10
+
+    webui    [label="Web UI\n(ECS Fargate)"       fillcolor="#FFDADA" color="#CC0000"]
+    cognito  [label="Cognito\n(identity)"          fillcolor="#FFDADA" color="#CC0000"]
+    azuread  [label="Azure AD\n(corporate IdP)"    fillcolor="#F0F0F0" color="#888888"]
+    mgmt     [label="Model + Tenant\nManagement"   fillcolor="#FFDADA" color="#CC0000"]
+    catalogue[label="Blueprint\nCatalogue"         fillcolor="#FFDADA" color="#CC0000"]
+
+    webui   -> cognito   [label="auth"]
+    cognito -> azuread   [label="federate"]
+    webui   -> mgmt      [label="configure"]
+    webui   -> catalogue [label="browse / deploy"]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     LOB ACCOUNT  (shared provisioning)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_lob {
+    label="Line-of-Business Account  (shared)"
+    style=filled
+    fillcolor="#F8FFF8"
+    color="#007700"
+    fontsize=10
+
+    /* ── LAUNCHPAD VPC (immutable, Launchpad-owned) ── */
+    subgraph cluster_lp_vpc {
+      label="Launchpad VPC  [IMMUTABLE -- no data allowed]"
+      style=filled
+      fillcolor="#FFF0F0"
+      color="#CC0000"
+      fontsize=9
+
+      alb      [label="ALB + TLS\n(HMAC entry point)"   fillcolor="#FFDADA" color="#CC0000"]
+      router   [label="Router\n(Lambda)"                 fillcolor="#FFDADA" color="#CC0000"]
+      gr       [label="Guardrail\n(Bedrock)"             fillcolor="#FFDADA" color="#CC0000"]
+      agentcore[label="Agent Core\n(optional blueprint)" fillcolor="#FFDADA" color="#CC0000" style="filled,rounded,dashed"]
+      bedrock  [label="Amazon Bedrock\n(models)"         fillcolor="#DAE8FF" color="#003399"]
+
+      alb -> router   [label="authorize\n(API key + HMAC)"]
+      router -> gr    [label="apply\nguardrail"]
+      gr -> bedrock   [label="invoke\nmodel"]
+      router -> agentcore [label="delegate\n(optional)" style=dashed]
+      agentcore -> bedrock [label="invoke\nmodel" style=dashed]
+    }
+
+    /* ── BUSINESS VPC (PwC-owned) ── */
+    subgraph cluster_biz_vpc {
+      label="Business VPC  (PwC-owned)"
+      style=filled
+      fillcolor="#DAFFD6"
+      color="#007700"
+      fontsize=9
+
+      app      [label="Lighthouse App\n(ECS Fargate / Lambda)" fillcolor="#C8FFC4" color="#007700"]
+      lg       [label="LangGraph\nOrchestrator"                 fillcolor="#C8FFC4" color="#007700"]
+      tools    [label="Tool functions\n(local Python)"          fillcolor="#C8FFC4" color="#007700"]
+      dynamo   [label="DynamoDB\n(state / config)"              fillcolor="#C8FFC4" color="#007700"]
+      search   [label="OpenSearch\n(vector / RAG)"              fillcolor="#C8FFC4" color="#007700"]
+      s3biz    [label="S3\n(documents)"                         fillcolor="#C8FFC4" color="#007700"]
+      secrets  [label="Secrets Manager\n(API key + HMAC)"       fillcolor="#C8FFC4" color="#007700"]
+
+      app   -> lg      [label="orchestrate"]
+      lg    -> tools   [label="call tool"]
+      tools -> dynamo  [label="query\n(local)"]
+      tools -> search  [label="retrieve\n(local)"]
+      tools -> s3biz   [label="fetch doc\n(local)"]
+      app   -> secrets [label="read\ncredentials"]
+    }
+  }
+
+  /* ── CROSS-ACCOUNT DEPLOYMENTS ─────────────────────── */
+  cp -> alb      [label="STS cross-account deploy\n(blueprints)" color="#CC0000" style=dashed fontcolor="#CC0000" constraint=false]
+  cp -> app      [label="STS cross-account deploy\n(app code)"   color="#007700" style=dashed fontcolor="#007700" constraint=false]
+
+  /* ── RUNTIME TRAFFIC ───────────────────────────────── */
+  app -> alb     [label="HMAC signed\nHTTP call" color="#003399" fontcolor="#003399" penwidth=2]
+  bedrock -> app [label="completion\nresponse"   color="#003399" fontcolor="#003399" penwidth=2 style=dashed]
+
+  /* Agent Core tool call back into Business VPC */
+  agentcore -> tools [label="tool call\n(Transit Gateway)" color="#AA6600" fontcolor="#AA6600" style=dashed]
+
+  /* Tenant admin deploys blueprints via web UI */
+  catalogue -> alb      [label="blueprint\ndeploy" color="#CC0000" fontcolor="#CC0000" style=dotted constraint=false]
+  catalogue -> agentcore [label="blueprint\ndeploy" color="#CC0000" fontcolor="#CC0000" style=dotted constraint=false]
+}

@@ -1,0 +1,201 @@
+digraph ext_auth_flow {
+  graph [
+    rankdir=LR
+    fontname="Helvetica"
+    fontsize=11
+    pad=0.5
+    splines=true
+    bgcolor="white"
+    label="PwC Showroom Phase 2 — External Prospect Auth and Tracking Flow\nQR dropped · Google + Microsoft OAuth · NextAuth session cookie · Cosmos tracking layer"
+    labelloc=b labeljust=c
+    nodesep=0.4
+    ranksep=0.8
+  ]
+  node [fontname="Helvetica" fontsize=10 style=filled shape=box]
+  edge [fontname="Helvetica" fontsize=9]
+
+  // ─────────────────────────────────────────────────────────────────
+  // SWIMLANE A — Presenter (PwC salesperson, Entra ID)
+  // ─────────────────────────────────────────────────────────────────
+  subgraph cluster_presenter {
+    label="Presenter (PwC salesperson — Entra ID SSO)"
+    style=filled fillcolor="#FFF0E0" color="#C86400"
+    fontcolor="#C86400" fontsize=11 fontname="Helvetica-Bold"
+
+    p_laptop [
+      label="Presenter's laptop\n(Admin UI\nadmin.showroom.pwc.example)"
+      fillcolor="#FFD8A0" color="#C86400"
+    ]
+    p_login [
+      label="Entra ID PKCE login\n(@pwc.com credentials)"
+      fillcolor="#FFD8A0" color="#C86400"
+    ]
+    p_allowlist [
+      label="Manage allow-list\n• add prospect email\n• set allowedDemoIds[]\n• set messageQuotaTotal\n• top up quota\n• ban / unban"
+      fillcolor="#FFD8A0" color="#C86400"
+    ]
+    p_share [
+      label="Shares plain URL\nhttps://showroom.pwc.example\n(no token, no QR code)"
+      fillcolor="#FFA040" color="#C86400" fontcolor="white"
+    ]
+    p_analytics [
+      label="Analytics view\n• lastSeenAt\n• totalConnections\n• demo visits + messageCount"
+      fillcolor="#FFD8A0" color="#C86400"
+    ]
+
+    p_laptop -> p_login [color="#C86400"]
+    p_login -> p_allowlist [label="Entra ID session\nestablished" color="#C86400" fontcolor="#C86400"]
+    p_allowlist -> p_share [color="#C86400"]
+    p_allowlist -> p_analytics [label="reads Cosmos\nusers + visits" color="#C86400" fontcolor="#C86400" style=dashed]
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // SWIMLANE B — Shared Substrate (BFF + Cosmos + Observability)
+  // ─────────────────────────────────────────────────────────────────
+  subgraph cluster_substrate {
+    label="Showroom BFF + Tracking Layer"
+    style=filled fillcolor="#F5F5F5" color="#444444"
+    fontcolor="#444444" fontsize=11 fontname="Helvetica-Bold"
+
+    fd_waf [
+      label="Azure Front Door\n+ WAF\n(TLS · OWASP CRS 3.2 · bot)"
+      fillcolor="#E0E0E0" color="#444444"
+    ]
+    bff_signin [
+      label="NextAuth signIn callback\n1. Look up email in Cosmos users\n2. Check status == active\n3. Deny if not found / banned /\n   quota_exhausted"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+    bff_session [
+      label="Session created\nNextAuth httpOnly cookie\n(AUTH_SECRET from Key Vault)\nidle: 1h · absolute: 8h"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+    bff_track [
+      label="Tracking writes\n• connection_events doc\n• users.lastSeenAt++\n• users.totalConnections++\n• App Insights: ProspectLoggedIn"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+    bff_catalog [
+      label="GET /api/demos\nReturns tiles filtered by\nusers.allowedDemoIds[]"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+    bff_demo_open [
+      label="Demo tile clicked\n• write demo_visits doc\n  { email, demoId, openedAt }\n• App Insights: DemoOpened\n• top-level redirect -> launchUrl"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+    bff_callback [
+      label="POST /api/internal/demo-usage\n(shared-secret auth)\n1. Update demo_visits.messageCount\n2. Decrement users.messageQuotaRemaining\n3. If <= 0 set status=quota_exhausted\n4. App Insights: UsageReported"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+
+    cosmos_users [
+      label="Cosmos: users\n{ email, status\n  allowedDemoIds[]\n  messageQuotaRemaining\n  lastSeenAt, totalConnections }"
+      fillcolor="#FFECB3" color="#F57F17" shape=cylinder
+    ]
+    cosmos_conn [
+      label="Cosmos: connection_events\n{ email, connectionAt, ip }"
+      fillcolor="#FFECB3" color="#F57F17" shape=cylinder
+    ]
+    cosmos_visits [
+      label="Cosmos: demo_visits\n{ email, demoId\n  openedAt, closedAt\n  messageCount }"
+      fillcolor="#FFECB3" color="#F57F17" shape=cylinder
+    ]
+    appins [
+      label="App Insights\nProspectLoggedIn\nDemoOpened\nUsageReported"
+      fillcolor="#E8E8E8" color="#888888" shape=ellipse
+    ]
+
+    fd_waf -> bff_signin [label="all HTTPS requests" color="#444444" fontcolor="#444444"]
+    bff_signin -> cosmos_users [label="look up email" color="#F57F17" fontcolor="#F57F17"]
+    bff_signin -> bff_session [label="status == active" color="#444444" fontcolor="#444444"]
+    bff_session -> bff_track [color="#444444"]
+    bff_track -> cosmos_conn [label="write" color="#F57F17" fontcolor="#F57F17"]
+    bff_track -> cosmos_users [label="update\nlastSeenAt++" color="#F57F17" fontcolor="#F57F17"]
+    bff_track -> appins [label="ProspectLoggedIn" color="#888888" fontcolor="#888888" style=dashed]
+    bff_session -> bff_catalog [label="session cookie\nestablished" color="#444444" fontcolor="#444444"]
+    bff_catalog -> cosmos_users [label="read allowedDemoIds" color="#F57F17" fontcolor="#F57F17"]
+    bff_catalog -> bff_demo_open [label="user clicks tile" color="#444444" fontcolor="#444444"]
+    bff_demo_open -> cosmos_visits [label="write openedAt" color="#F57F17" fontcolor="#F57F17"]
+    bff_demo_open -> appins [label="DemoOpened" color="#888888" fontcolor="#888888" style=dashed]
+    bff_callback -> cosmos_visits [label="update messageCount\nclosedAt" color="#F57F17" fontcolor="#F57F17"]
+    bff_callback -> cosmos_users [label="decrement\nquotaRemaining" color="#F57F17" fontcolor="#F57F17"]
+    bff_callback -> appins [label="UsageReported" color="#888888" fontcolor="#888888" style=dashed]
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // SWIMLANE C — Prospect (external guest, Google or Microsoft)
+  // ─────────────────────────────────────────────────────────────────
+  subgraph cluster_prospect {
+    label="Prospect (external guest — Google or Microsoft consumer account)"
+    style=filled fillcolor="#EEF4FF" color="#1B4F8A"
+    fontcolor="#1B4F8A" fontsize=11 fontname="Helvetica-Bold"
+
+    pr_open [
+      label="Opens showroom URL\nhttps://showroom.pwc.example\n(bookmarkable, no QR needed)"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+    ]
+    pr_signin_page [
+      label="Sign-in page\n[ Sign in with Google ]\n[ Sign in with Microsoft ]"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+    ]
+    pr_oauth [
+      label="OAuth PKCE flow\n(provider's login page)\nExisting account — no signup"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+    ]
+    pr_denied [
+      label="Access denied screen\n\"Not authorised.\nContact your PwC host.\""
+      fillcolor="#FFCDD2" color="#B71C1C" fontcolor="#B71C1C" shape=ellipse
+    ]
+    pr_catalog [
+      label="Demo catalog\n(tiles filtered by allowedDemoIds)\nPersonalised view"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+    ]
+    pr_demo [
+      label="Demo app opens\n(top-level redirect\nnew browser URL)"
+      fillcolor="#BBDEFB" color="#1B4F8A"
+    ]
+    pr_quota [
+      label="Quota exhausted screen\n\"Ask PwC host\nto top up quota.\""
+      fillcolor="#FFCDD2" color="#B71C1C" fontcolor="#B71C1C" shape=ellipse
+    ]
+
+    pr_open -> pr_signin_page [label="no session cookie\n-> /api/auth/signin" color="#1B4F8A" fontcolor="#1B4F8A"]
+    pr_signin_page -> pr_oauth [label="provider selected" color="#1B4F8A" fontcolor="#1B4F8A"]
+    pr_oauth -> pr_denied [label="not on allow-list\nor banned" color="#B71C1C" fontcolor="#B71C1C"]
+    pr_oauth -> pr_quota [label="quota_exhausted" color="#B71C1C" fontcolor="#B71C1C"]
+    pr_oauth -> pr_catalog [label="status == active\ncookie set" color="#1B4F8A" fontcolor="#1B4F8A"]
+    pr_catalog -> pr_demo [label="tile click\n+ top-level redirect" color="#1B4F8A" fontcolor="#1B4F8A"]
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Cross-swimlane connections
+  // ─────────────────────────────────────────────────────────────────
+  p_allowlist -> cosmos_users [
+    label="write allow-list\n+ quota via Admin API"
+    color="#C86400" fontcolor="#C86400"
+  ]
+  p_share -> pr_open [
+    label="salesperson sends URL\n(email / Teams / etc.)"
+    color="#888888" fontcolor="#888888" style=dashed
+  ]
+  pr_open -> fd_waf [
+    label="HTTPS" color="#1B4F8A" fontcolor="#1B4F8A"
+  ]
+  pr_oauth -> fd_waf [
+    label="OAuth callback\n/api/auth/callback/<provider>" color="#1B4F8A" fontcolor="#1B4F8A"
+  ]
+  pr_catalog -> fd_waf [
+    label="GET /api/demos\n(session cookie)" color="#1B4F8A" fontcolor="#1B4F8A"
+  ]
+  pr_demo -> bff_callback [
+    label="demo app reports\nmessageCount callback"
+    color="#2E7D32" fontcolor="#2E7D32" style=dashed
+  ]
+
+  // ─────────────────────────────────────────────────────────────────
+  // Session model note
+  // ─────────────────────────────────────────────────────────────────
+  session_note [
+    label="Session model (no Redis, no JWT signing key):\n• NextAuth httpOnly encrypted cookie (AUTH_SECRET from Key Vault)\n• Idle timeout: 1 hour  |  Absolute timeout: 8 hours\n• Revocation: set status=banned in Cosmos -> denied on next sign-in\n• No silent refresh loop required\n• Quota: messageQuotaRemaining decremented per demo-usage callback"
+    shape=note style=filled fillcolor="#FFFBE6" color="#B8860B"
+    fontcolor="#B8860B" fontsize=9
+  ]
+}

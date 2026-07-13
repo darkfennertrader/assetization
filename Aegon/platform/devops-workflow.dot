@@ -1,0 +1,128 @@
+digraph devops_workflow {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=11
+    label="PwC DevOps Workflow on Aegon Launchpad\nTwo-pipeline model and environment lifecycle"
+    labelloc=t
+    pad=0.4
+    nodesep=0.6
+    ranksep=0.8
+    bgcolor="#FAFAFA"
+  ]
+  node [fontname="Helvetica" fontsize=10 shape=box style="filled,rounded" margin="0.2,0.1"]
+  edge [fontname="Helvetica" fontsize=9]
+
+  /* ══════════════════════════════════════════════════════
+     PIPELINE A — LAUNCHPAD (not ours, shown for context)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_pipe_lp {
+    label="Pipeline A: Launchpad team pipeline  (NOT PwC)"
+    style=filled
+    fillcolor="#FFF0F0"
+    color="#CC0000"
+    fontsize=10
+
+    lp_github [label="Launchpad GitHub repo"       fillcolor="#FFDADA" color="#CC0000"]
+    lp_cp     [label="CodePipeline / CodeBuild"     fillcolor="#FFDADA" color="#CC0000"]
+    lp_deploy [label="Cross-account deploy\n(STS)" fillcolor="#FFDADA" color="#CC0000"]
+
+    lp_github -> lp_cp     [label="webhook"]
+    lp_cp     -> lp_deploy [label="package + deploy\nblueprints"]
+  }
+
+  /* ── HUMAN HANDOFF ──────────────────────────────────── */
+  subgraph cluster_handoff {
+    label="Human handoff  (Tenant Admin role)"
+    style=filled
+    fillcolor="#FFFACC"
+    color="#AA8800"
+    fontsize=10
+
+    webui_ta [label="Launchpad Web UI\n(Tenant Admin logs in)" fillcolor="#FFF5AA" color="#AA8800"]
+    bp_sel   [label="Select + deploy blueprint\n(router / guardrail / agent)" fillcolor="#FFF5AA" color="#AA8800"]
+    apikey   [label="Generate API key\n+ HMAC secret"           fillcolor="#FFF5AA" color="#AA8800"]
+    sm_store [label="Store in\nSecrets Manager"                 fillcolor="#FFF5AA" color="#AA8800"]
+
+    webui_ta -> bp_sel  [label="configure"]
+    bp_sel   -> apikey  [label="creates"]
+    apikey   -> sm_store [label="DevOps stores\ncredentials"]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     PIPELINE B — PwC (our pipeline)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_pipe_pwc {
+    label="Pipeline B: PwC pipeline  (GitHub Actions + Terraform)"
+    style=filled
+    fillcolor="#DAFFD6"
+    color="#007700"
+    fontsize=10
+
+    gh_repo  [label="GitHub\n(lighthouse repos)"        fillcolor="#C8FFC4" color="#007700"]
+    ga       [label="GitHub Actions"                    fillcolor="#C8FFC4" color="#007700"]
+    tf_plan  [label="terraform plan / apply\n(Business VPC infra)" fillcolor="#C8FFC4" color="#007700"]
+    app_dep  [label="App deploy\n(ECS task / Lambda)"   fillcolor="#C8FFC4" color="#007700"]
+    env_cfg  [label="Inject env config\n(from Secrets Manager)" fillcolor="#C8FFC4" color="#007700"]
+
+    gh_repo -> ga      [label="push / merge"]
+    ga -> tf_plan      [label="infra job"]
+    ga -> app_dep      [label="app job"]
+    ga -> env_cfg      [label="config job"]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     ENVIRONMENTS (all point to Launchpad PROD)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_envs {
+    label="LOB Account environments\n(all consume Launchpad PRODUCTION)"
+    style=filled
+    fillcolor="#F8FFF8"
+    color="#007700"
+    fontsize=10
+
+    env_dev  [label="dev environment\n(synthetic data only)"  fillcolor="#C8FFC4" color="#007700"]
+    env_test [label="test environment\n(synthetic data only)" fillcolor="#C8FFC4" color="#007700"]
+    env_prod [label="prod environment\n(real data -- governed)" fillcolor="#AAFFAA" color="#007700"]
+
+    env_dev  -> env_test [label="promote" style=dashed]
+    env_test -> env_prod [label="promote\n(after governance)" style=dashed]
+  }
+
+  /* ── LAUNCHPAD PRODUCTION (consumed by all envs) ────── */
+  subgraph cluster_lp_prod {
+    label="Launchpad VPC  (PRODUCTION -- all envs consume this)"
+    style=filled
+    fillcolor="#FFF0F0"
+    color="#CC0000"
+    fontsize=10
+
+    lp_alb  [label="ALB + Router\n+ Guardrails"   fillcolor="#FFDADA" color="#CC0000"]
+    lp_br   [label="Amazon Bedrock"               fillcolor="#DAE8FF" color="#003399"]
+
+    lp_alb -> lp_br [label="invoke model"]
+  }
+
+  /* ── FLOWS ──────────────────────────────────────────── */
+  lp_deploy -> lp_alb   [label="deploys\nblueprints" color="#CC0000" fontcolor="#CC0000" style=dashed]
+
+  webui_ta -> lp_alb    [label="provisions blueprint\ninto LOB account" color="#AA8800" fontcolor="#AA8800" style=dashed]
+
+  sm_store -> env_cfg   [label="credentials\nflow" color="#007700" fontcolor="#007700"]
+  app_dep  -> env_dev   [label="deploy to dev" color="#007700" fontcolor="#007700" style=dashed]
+  app_dep  -> env_test  [label="deploy to test" color="#007700" fontcolor="#007700" style=dashed]
+  app_dep  -> env_prod  [label="deploy to prod" color="#007700" fontcolor="#007700" style=dashed]
+
+  env_dev  -> lp_alb    [label="HMAC calls\n(always prod router)" color="#003399" fontcolor="#003399" penwidth=2]
+  env_test -> lp_alb    [label="HMAC calls\n(always prod router)" color="#003399" fontcolor="#003399" penwidth=2]
+  env_prod -> lp_alb    [label="HMAC calls\n(always prod router)" color="#003399" fontcolor="#003399" penwidth=2]
+
+  /* ── KEY RULES ──────────────────────────────────────── */
+  rules [
+    label="DevOps rules\n- Never terraform Bedrock, guardrails, or router\n- Credentials come from Launchpad UI -> Secrets Manager\n- All envs hit the same Launchpad production endpoint\n- Real data in any env = production-OU governance applies\n- Blueprint upgrade = new parallel deployment + key swap"
+    shape=note
+    fillcolor="#FFEEEE"
+    color="#CC0000"
+    fontsize=9
+  ]
+}

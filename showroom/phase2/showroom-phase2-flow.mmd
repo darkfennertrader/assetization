@@ -1,0 +1,97 @@
+sequenceDiagram
+    autonumber
+    actor B as Prospect Browser<br/>(external customer)
+    participant F as Azure Front Door + WAF<br/>(edge · OWASP CRS 3.2)
+    participant S as ACA showroom-app<br/>(Next.js + NextAuth BFF)
+    participant I as Google or Microsoft<br/>consumer OAuth
+    participant C as Cosmos DB<br/>(users / connection_events / demo_visits)
+    participant KV as Azure Key Vault<br/>(secrets + demo-handoff key)
+    participant A as App Insights<br/>(custom events)
+    participant D as Demo app<br/>(Overwatch / UBO / …)
+
+    B->>F: GET https://showroom.pwc.example/
+    F->>S: clean traffic (WAF passed · Front Door private link)
+    S-->>B: 302 → /api/auth/signin (no session cookie found)
+
+    B->>S: GET /api/auth/signin
+    S-->>B: Sign-in page: "Sign in with Google" | "Sign in with Microsoft"
+
+    B->>I: /authorize + code_challenge (PKCE · provider chosen by prospect)
+    I-->>B: login form (existing Google or Microsoft account)
+    B->>I: submit credentials
+    I-->>B: 302 → /api/auth/callback/<provider>?code=…
+
+    B->>S: /api/auth/callback/<provider>?code=…
+    S->>I: POST /token (code + code_verifier)
+    I-->>S: ID token (email · sub · name)
+
+    Note over S,C: signIn callback — coarse-grained AuthZ (email look-up in Cosmos users)
+
+    S->>C: GET users by email
+    C-->>S: user record (or not found)
+
+    alt Not found OR status = banned OR status = quota_exhausted
+        rect rgb(255, 210, 210)
+            S-->>B: "Access denied — contact your PwC host" (HTTP 200)
+        end
+    else status = active
+        rect rgb(220, 245, 220)
+            S->>C: INSERT connection_events { email, connectionAt, ip, userAgent }
+            S->>C: UPDATE users { totalConnections++, lastSeenAt }
+            S->>A: ProspectLoggedIn { email_hashed, provider }
+            S-->>B: session cookie (httpOnly · Secure · SameSite=Lax · 7d idle / 7d absolute)
+        end
+    end
+
+    Note over S,C: session callback — fine-grained AuthZ (attach allowedDemoIds + quota to session)
+
+    B->>S: GET /api/demos (session cookie presented)
+    S->>C: read users.allowedDemoIds + messageQuotaRemaining
+    C-->>S: allowed demo list + quota
+
+    alt allowedDemoIds is empty
+        rect rgb(255, 245, 200)
+            S-->>B: Catalog: "No demos assigned yet — contact your PwC host"
+        end
+    else demos assigned
+        rect rgb(220, 245, 220)
+            S-->>B: Catalog HTML (filtered demo tiles: thumbnail · title · description)
+        end
+    end
+
+    B->>S: Click demo tile (e.g. Overwatch)
+    S->>C: INSERT demo_visits { visitId: uuid, email, demoId, openedAt }
+    S->>KV: read demo-handoff private key (Managed Identity)
+    KV-->>S: private key (RSA-256)
+    S->>S: mint JWT { iss, aud: demoId, sub: email,<br/>visitId, iat, exp = now+60s, kid }
+    S->>A: DemoOpened { email_hashed, demoId }
+    S-->>B: auto-POST form → demo.launchUrl<br/>(hidden field: token=<signed JWT>)
+
+    Note over B,D: Browser posts JWT to demo app — no second login screen
+
+    B->>D: POST / with hidden field token=<JWT>
+    D->>S: GET /.well-known/jwks.json (cached 24 h · kid-based lookup)
+    S-->>D: JWKS doc (Key Vault-backed · RAM 15 min · multi-key during rotation)
+    D->>D: verify sig · iss · aud · exp · extract email + visitId
+    D-->>B: Set-Cookie: demo_session · 302 → /
+    B->>D: GET / with demo_session cookie
+    D-->>B: demo application UI (no re-authentication)
+
+    Note over D,S: After session ends — demo app reports usage back to showroom
+
+    D->>S: POST /api/internal/demo-usage<br/>{ email, demoId, visitId, messageCount, closedAt }<br/>X-Demo-Callback-Secret: <shared secret>
+    S->>S: validate shared secret
+    S->>C: UPDATE demo_visits { messageCount, closedAt }
+    S->>C: UPDATE users.messageQuotaRemaining -= messageCount
+
+    alt messageQuotaRemaining ≤ 0
+        rect rgb(255, 210, 210)
+            S->>C: UPDATE users.status = quota_exhausted
+        end
+    end
+
+    S->>A: UsageReported { email_hashed, demoId, messageCount }
+    S-->>D: 200 OK
+
+    Note over B,S: On next sign-in: signIn callback reads status = quota_exhausted → access denied
+    Note over S: Runtime: Managed Identity → Key Vault (AUTH_SECRET · provider secrets · demo-handoff key)<br/>Container image pulled from ACR via Managed Identity<br/>stdout/stderr → Log Analytics via ACA environment link<br/>Front Door enforces HTTPS-only · ACA internal ingress (no public IP on container)

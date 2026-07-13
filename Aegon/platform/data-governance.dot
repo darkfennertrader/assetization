@@ -1,0 +1,124 @@
+digraph data_governance {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=12
+    label="Aegon AI Platform — Two Speeds of Delivery\nSynthetic data (fast lane) vs Real data (governed lane)"
+    labelloc=t
+    pad=0.6
+    nodesep=0.6
+    ranksep=0.8
+    bgcolor="#FAFAFA"
+  ]
+  node [fontname="Helvetica" fontsize=11 shape=box style="filled,rounded" margin="0.25,0.12"]
+  edge [fontname="Helvetica" fontsize=10]
+
+  /* ══════════════════════════════════════════════════════
+     LEFT LANE — SYNTHETIC DATA  (green, fast)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_fast {
+    label="Fast lane — Synthetic data\nDesign and prototype phase"
+    style=filled
+    fillcolor="#D6F5D6"
+    color="#2E7D32"
+    fontsize=11
+    fontcolor="#2E7D32"
+
+    f_data   [label="Data source\nPwC-authored mock data\n(realistic but not real)"
+              fillcolor="#B8EDB8" color="#2E7D32"]
+    f_appr   [label="Approvals needed\nNone"
+              fillcolor="#B8EDB8" color="#2E7D32"]
+    f_env    [label="Environment\nPwC dev / test account"
+              fillcolor="#B8EDB8" color="#2E7D32"]
+    f_signoff [label="Who signs off\nPwC solution architect"
+               fillcolor="#B8EDB8" color="#2E7D32"]
+    f_speed  [label="Time to start\nDays"
+              fillcolor="#2E7D32" color="#1B5E20" fontcolor="#FFFFFF"]
+    f_output [label="Output\nFunctional prototype\nrunning on real AI models"
+              fillcolor="#B8EDB8" color="#2E7D32"]
+
+    f_data -> f_appr   [label="no gate" color="#2E7D32" fontcolor="#2E7D32"]
+    f_appr -> f_env    [label="proceed\nimmediately" color="#2E7D32" fontcolor="#2E7D32"]
+    f_env  -> f_signoff [label="architect\nreviews design"]
+    f_signoff -> f_speed
+    f_speed -> f_output [label="build starts" color="#2E7D32" fontcolor="#2E7D32" penwidth=2]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     RIGHT LANE — REAL DATA  (amber, governed)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_governed {
+    label="Governed lane — Real data\nProduction MVP phase"
+    style=filled
+    fillcolor="#FFF3CC"
+    color="#F57F17"
+    fontsize=11
+    fontcolor="#F57F17"
+
+    r_data   [label="Data source\nAegon production system\n(Finance ledgers, reports)"
+              fillcolor="#FFE999" color="#F57F17"]
+
+    subgraph cluster_gates {
+      label="Approval gates  (Aegon Governance)"
+      style=filled
+      fillcolor="#FFECB3"
+      color="#E65100"
+      fontsize=10
+      fontcolor="#E65100"
+
+      g1 [label="Gate 1\nData classification\n(what sensitivity level?)"    fillcolor="#FFDD80" color="#E65100"]
+      g2 [label="Gate 2\nData owner sign-off\n(business owner approves use)" fillcolor="#FFDD80" color="#E65100"]
+      g3 [label="Gate 3\nDPIA review\n(if personal data is involved)"        fillcolor="#FFDD80" color="#E65100" style="filled,rounded,dashed"]
+      g4 [label="Gate 4\nArchitecture review\n(AI Board approval)"           fillcolor="#FFDD80" color="#E65100"]
+      g5 [label="Gate 5\nProduction-OU controls\n(security standards apply)" fillcolor="#FFDD80" color="#E65100"]
+
+      g1 -> g2 [label="classified"]
+      g2 -> g3 [label="approved"]
+      g3 -> g4 [label="reviewed\n(if needed)" style=dashed]
+      g4 -> g5 [label="cleared"]
+    }
+
+    r_env    [label="Environment\nStill called 'dev'\nbut subject to production controls"
+              fillcolor="#FFE999" color="#F57F17"]
+    r_signoff [label="Who signs off\nAegon Data Governance\n+ Aegon AI Board"
+               fillcolor="#FFE999" color="#F57F17"]
+    r_speed  [label="Time to start\nWeeks (governance lead time)"
+              fillcolor="#F57F17" color="#E65100" fontcolor="#FFFFFF"]
+    r_output [label="Output\nProduction-ready MVP\nwith full compliance trail"
+              fillcolor="#FFE999" color="#F57F17"]
+
+    r_data -> g1    [label="submit for\nclassification" color="#E65100" fontcolor="#E65100"]
+    g5     -> r_env [label="environment\nprovisioned" color="#E65100" fontcolor="#E65100"]
+    r_env  -> r_signoff
+    r_signoff -> r_speed
+    r_speed -> r_output [label="build starts" color="#F57F17" fontcolor="#F57F17" penwidth=2]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     KEY MESSAGE  (centre callout)
+  ═══════════════════════════════════════════════════════ */
+  keypoint [
+    label="The application code is identical on both sides.\nWhat changes is the account it runs in\nand the approvals gate in front of it.\n\nSynthetic-first is a feature, not a compromise:\nit lets PwC prove the AI logic works before\ngovernance effort is spent on real data access."
+    shape=note
+    fillcolor="#EEF0FF"
+    color="#0D47A1"
+    fontsize=11
+    fontcolor="#0D47A1"
+  ]
+
+  /* Connect the two lanes to the callout */
+  f_output -> keypoint [style=invis]
+  r_output -> keypoint [style=invis]
+
+  /* ══════════════════════════════════════════════════════
+     PROMOTION ARROW (fast lane -> governed lane)
+  ═══════════════════════════════════════════════════════ */
+  f_output -> r_data [
+    label="when prototype is\nvalidated, promote\nto real data"
+    color="#0D47A1"
+    fontcolor="#0D47A1"
+    style=dashed
+    penwidth=2
+    constraint=false
+  ]
+}

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Regenerate all artefacts in showroom/phase2/.
-# Run by the user: bash showroom/phase2/build_all.sh
+# vision/build_all.sh
+# Regenerates all artefacts in this directory.
+# Run manually: bash vision/build_all.sh
+# NEVER run automatically by Cline.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-REPO_ROOT="$(cd ../.. && pwd)"
+REPO_ROOT="$(cd .. && pwd)"
 TOOLKIT="$REPO_ROOT/.clinerules/pdf-toolkit"
 
 # ── Unicode preprocessing helper ─────────────────────────────────────────────
@@ -55,7 +57,7 @@ done
 for mmd_file in *.mmd; do
   [ -f "$mmd_file" ] || continue
   png_file="${mmd_file%.mmd}.png"
-  mmdc -i "$mmd_file" -o "$png_file" -b white -s 3 \
+  mmdc -i "$mmd_file" -o "$png_file" -b transparent \
     --puppeteerConfigFile "$TOOLKIT/puppeteer-config.json"
   echo "OK  $png_file"
 done
@@ -63,7 +65,6 @@ done
 # ── 3. Build PDFs from Markdown sources ──────────────────────────────────────
 for md_file in *.md; do
   [ -f "$md_file" ] || continue
-  [ "$md_file" = "README.md" ] && continue
   pdf_file="${md_file%.md}.pdf"
   build_pdf "$md_file" "$pdf_file"
   echo "OK  $pdf_file"

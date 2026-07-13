@@ -1,0 +1,139 @@
+digraph architect_workflow {
+  graph [
+    rankdir=LR
+    fontname="Helvetica"
+    fontsize=11
+    label="PwC Solution Architect Workflow on Aegon Launchpad\nDesign decisions, exception paths, and stakeholder routing"
+    labelloc=t
+    pad=0.4
+    nodesep=0.5
+    ranksep=0.9
+    bgcolor="#FAFAFA"
+  ]
+  node [fontname="Helvetica" fontsize=10 shape=box style="filled,rounded" margin="0.2,0.1"]
+  edge [fontname="Helvetica" fontsize=9]
+
+  /* ══════════════════════════════════════════════════════
+     DESIGN PHASE
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_design {
+    label="Design Phase (weeks 1-4)"
+    style=filled
+    fillcolor="#DAFFD6"
+    color="#007700"
+    fontsize=10
+
+    req      [label="Gather requirements\n(lighthouse owner)"     fillcolor="#C8FFC4" color="#007700"]
+    orch     [label="Choose orchestration\npattern"               fillcolor="#C8FFC4" color="#007700"]
+    comp     [label="Identify required\nAWS components"           fillcolor="#C8FFC4" color="#007700"]
+    data     [label="Identify data sources\n+ classification"     fillcolor="#C8FFC4" color="#007700"]
+    cross    [label="Identify cross-lighthouse\nreuse candidates"  fillcolor="#C8FFC4" color="#007700"]
+    arch_doc [label="Write architecture\ndocument (Aegon template)" fillcolor="#C8FFC4" color="#007700"]
+
+    req   -> orch
+    req   -> comp
+    req   -> data
+    req   -> cross
+    orch  -> arch_doc
+    comp  -> arch_doc
+    data  -> arch_doc
+    cross -> arch_doc
+  }
+
+  /* ══════════════════════════════════════════════════════
+     DECISION GATES
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_gates {
+    label="Decision gates"
+    style=filled
+    fillcolor="#FFFACC"
+    color="#AA8800"
+    fontsize=10
+
+    d_orch   [label="Orchestration\nchoice?" shape=diamond fillcolor="#FFF5AA" color="#AA8800"]
+    d_comp   [label="Component\napproved?" shape=diamond  fillcolor="#FFF5AA" color="#AA8800"]
+    d_data   [label="Data\nclassification?"  shape=diamond fillcolor="#FFF5AA" color="#AA8800"]
+    d_bp     [label="Blueprint\nexists?"     shape=diamond fillcolor="#FFF5AA" color="#AA8800"]
+
+    orch     -> d_orch
+    comp     -> d_comp
+    data     -> d_data
+    comp     -> d_bp
+  }
+
+  /* ── ORCHESTRATION OUTCOMES ─────────────────────────── */
+  lg_path  [label="LangGraph in\nBusiness VPC\n(default)"      fillcolor="#DAFFD6" color="#007700"]
+  ac_path  [label="Agent Core blueprint\n(when MCP/A2A needed)" fillcolor="#FFDADA" color="#CC0000"]
+  d_orch -> lg_path [label="standard\nRAG / HITL"]
+  d_orch -> ac_path [label="external SaaS\ntool / A2A agent"]
+
+  /* ── COMPONENT OUTCOMES ─────────────────────────────── */
+  comp_ok  [label="Use component\nas-is"         fillcolor="#DAFFD6" color="#007700"]
+  exc_path [label="Exception process\n(Architecture Review)" fillcolor="#FFDADA" color="#CC0000"]
+  d_comp -> comp_ok  [label="yes"]
+  d_comp -> exc_path [label="no -- not\napproved yet"]
+
+  /* ── BLUEPRINT OUTCOMES ─────────────────────────────── */
+  bp_ok    [label="Provision blueprint\nvia Launchpad UI" fillcolor="#FFDADA" color="#CC0000"]
+  byo_path [label="Build custom code\nin Business VPC"    fillcolor="#DAFFD6" color="#007700"]
+  d_bp -> bp_ok    [label="yes"]
+  d_bp -> byo_path [label="no -- build\nourselves"]
+
+  /* ── DATA OUTCOMES ──────────────────────────────────── */
+  synth    [label="Use synthetic data\n(no governance needed)" fillcolor="#DAFFD6" color="#007700"]
+  gov_path [label="Trigger data\ngovernance workstream"        fillcolor="#FFFACC" color="#AA8800"]
+  d_data -> synth    [label="synthetic"]
+  d_data -> gov_path [label="real / production"]
+
+  /* ══════════════════════════════════════════════════════
+     STAKEHOLDER MAP
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_stakeholders {
+    label="Stakeholder routing"
+    style=filled
+    fillcolor="#EEF0FF"
+    color="#003399"
+    fontsize=10
+
+    s_platform [label="Platform lead\n(Launchpad team)"      fillcolor="#DAE8FF" color="#003399"]
+    s_prov     [label="Provisioning lead\n(infra + accounts)" fillcolor="#DAE8FF" color="#003399"]
+    s_arb      [label="Architecture review\n(component approval)" fillcolor="#DAE8FF" color="#003399"]
+    s_strat    [label="AI strategy lead\n(AI policy + direction)" fillcolor="#DAE8FF" color="#003399"]
+    s_data     [label="Data governance\n(real-data approval)"  fillcolor="#DAE8FF" color="#003399"]
+    s_sponsor  [label="Business sponsor\n(scope + budget)"     fillcolor="#DAE8FF" color="#003399"]
+  }
+
+  /* ── ROUTING ARROWS ─────────────────────────────────── */
+  s_platform -> s_platform [label="platform mechanics\nbluprints, HMAC, routing" style=invis]
+
+  arch_doc -> s_platform [label="platform Q&A"           color="#003399" fontcolor="#003399" style=dashed]
+  exc_path -> s_arb      [label="submit for\napproval"   color="#CC0000" fontcolor="#CC0000"]
+  gov_path -> s_data     [label="classify +\nclear data" color="#AA8800" fontcolor="#AA8800"]
+  arch_doc -> s_prov     [label="request landing\nzone"  color="#003399" fontcolor="#003399" style=dashed]
+  arch_doc -> s_strat    [label="AI policy\nquestions"   color="#003399" fontcolor="#003399" style=dashed]
+  arch_doc -> s_sponsor  [label="scope / priority\nescalation" color="#007700" fontcolor="#007700" style=dashed]
+
+  /* ══════════════════════════════════════════════════════
+     REUSE PATTERN
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_reuse {
+    label="Cross-lighthouse reuse pattern"
+    style=filled
+    fillcolor="#DAFFD6"
+    color="#007700"
+    fontsize=10
+
+    shared_vpc [label="One Business VPC\n(all lighthouses)"      fillcolor="#C8FFC4" color="#007700"]
+    shared_alb [label="One router blueprint\n(one or more ALBs)"  fillcolor="#FFDADA" color="#CC0000"]
+    per_key    [label="Per-lighthouse API key\n(separate logs)"   fillcolor="#C8FFC4" color="#007700"]
+    per_code   [label="Per-lighthouse app code\n(separate repos)" fillcolor="#C8FFC4" color="#007700"]
+    shared_db  [label="Shared DB / vector store\n(if schemas allow)" fillcolor="#C8FFC4" color="#007700"]
+
+    shared_vpc -> per_key
+    shared_alb -> per_key
+    per_key    -> per_code
+    shared_vpc -> shared_db
+  }
+
+  cross -> shared_vpc [label="architect\ndecides" color="#007700" fontcolor="#007700" style=dashed]
+}

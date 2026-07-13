@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Regenerate all artefacts in showroom/phase2/.
-# Run by the user: bash showroom/phase2/build_all.sh
+# Aegon/platform/build_all.sh
+# Regenerates all PNGs and PDFs in this directory.
+# Run manually: bash Aegon/platform/build_all.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -22,7 +23,7 @@ _pandoc_with_gate() {
   pandoc "$src" "$@" -o "$out" 2>&1 | tee "$log"
   local rc=${PIPESTATUS[0]}
   if grep -q 'Missing character' "$log"; then
-    echo "FAIL: missing character(s) in $label — add to unicode-substitutions.sed" >&2
+    echo "FAIL: missing character(s) in $label -- add to unicode-substitutions.sed" >&2
     grep 'Missing character' "$log" >&2
     rm -f "$log"; exit 1
   fi
@@ -55,7 +56,7 @@ done
 for mmd_file in *.mmd; do
   [ -f "$mmd_file" ] || continue
   png_file="${mmd_file%.mmd}.png"
-  mmdc -i "$mmd_file" -o "$png_file" -b white -s 3 \
+  mmdc -i "$mmd_file" -o "$png_file" -b transparent \
     --puppeteerConfigFile "$TOOLKIT/puppeteer-config.json"
   echo "OK  $png_file"
 done

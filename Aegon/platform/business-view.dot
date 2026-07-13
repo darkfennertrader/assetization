@@ -1,0 +1,160 @@
+digraph business_view {
+  graph [
+    rankdir=TB
+    fontname="Helvetica"
+    fontsize=12
+    label="Aegon AI Platform — Business Overview\nResponses return along the same path."
+    labelloc=t
+    pad=0.6
+    nodesep=0.8
+    ranksep=1.1
+    bgcolor="#FAFAFA"
+  ]
+  node [fontname="Helvetica" fontsize=11 shape=box style="filled,rounded" margin="0.30,0.14"]
+  edge [fontname="Helvetica" fontsize=10]
+
+  /* ══════════════════════════════════════════════════════
+     ZONE 1 — AEGON BUSINESS  (green)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_business {
+    label="Aegon Business\n(Business sponsor · Lighthouse owners · End users)"
+    style=filled fillcolor="#D6F5D6" color="#2E7D32" fontsize=11 fontcolor="#2E7D32"
+
+    p_duncan [label="Duncan Russell · Group CFO\nUltimate sponsor"
+              shape=ellipse fontsize=9 fillcolor="#93C993" color="#2E7D32"]
+    p_mark   [label="Mark (Aegon) · Engagement lead\nTenant Admin"
+              shape=ellipse fontsize=9 fillcolor="#93C993" color="#2E7D32"]
+    p_nathal [label="Nathalie (Aegon) · Programme coordination\nLighthouses kick-off"
+              shape=ellipse fontsize=9 fillcolor="#93C993" color="#2E7D32"]
+
+    /* chain forces the three ellipses into a vertical column */
+    p_duncan -> p_mark   [style=invis]
+    p_mark   -> p_nathal [style=invis]
+
+    user     [label="End user\n(Finance team member)" fillcolor="#B8EDB8" color="#2E7D32"]
+    src_data [label="Source data\n(Finance ledgers, reports, documents)" fillcolor="#B8EDB8" color="#2E7D32"]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     ZONE 2 — PwC DELIVERY  (blue)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_pwc {
+    label="Lighthouse Application VPC\n(Aegon BU account · PwC-delivered)\nFull design freedom inside · only AI calls exit to Launchpad"
+    style=filled fillcolor="#D0E8FF" color="#0D47A1" fontsize=11 fontcolor="#0D47A1"
+
+    app_ui   [label="Lighthouse user interface\n(web app / chat panel)" fillcolor="#B3D8FF" color="#0D47A1"]
+    app_data [label="Tool functions + Application data\nAll data lives here — synthetic (PoC),\nreal data (MVP / prod), embeddings, documents"
+              fillcolor="#B3D8FF" color="#0D47A1"]
+
+    /* Single entry-point for the orchestrator — all flow arrows use this node */
+    orch [label="Orchestrator\nReceives the request · decides which tools to call\nand when to invoke the AI model"
+          fillcolor="#7BADD4" color="#0D47A1" fontcolor="white" penwidth=2]
+
+    subgraph cluster_orch_options {
+      label="Orchestrator implementation — one option chosen per lighthouse at design time"
+      style=filled fillcolor="#C5DCFA" color="#0D47A1" fontsize=10 fontcolor="#0D47A1"
+
+      orch_a [label="Option A · Agent Core blueprint\n(Barrington / Launchpad-provided)\n10 pre-built ARB-approved patterns\nFastest to deploy · AWS-constrained"
+              fillcolor="#D9EEF7" color="#B71C1C"]
+      orch_b [label="Option B · Custom LangGraph\n(PwC-built)\nFull flexibility · Portable\nPwC-standard across clients"
+              fillcolor="#B3D8FF" color="#0D47A1"]
+      orch_c [label="Option C · Best of Both\nLangGraph main flow\n+ Agent Core for MCP / A2A steps\nMostly portable"
+              fillcolor="#CCE8FF" color="#5B3DA0"]
+
+      orch_a -> orch_b [style=invis]
+      orch_b -> orch_c [style=invis]
+    }
+
+    /* dotted "is one of" connectors — not flow arrows */
+    orch -> orch_a [style=dotted color="#607D8B" fontcolor="#607D8B" label="is one of" dir=none]
+    orch -> orch_b [style=dotted color="#607D8B" dir=none]
+    orch -> orch_c [style=dotted color="#607D8B" dir=none]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     ZONE 3 — AEGON LAUNCHPAD  (red)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_launchpad {
+    label="Aegon Launchpad  (AI Safety Layer)\nCommissioned by Aegon · Delivered by Barrington"
+    style=filled fillcolor="#FFDDDD" color="#B71C1C" fontsize=11 fontcolor="#B71C1C"
+
+    p_dean [label="Dean Holland (Aegon)\nSenior leader, AI technology\nOwns AI strategy + guardrail policy"
+            shape=ellipse fontsize=9 fillcolor="#FF9999" color="#B71C1C"]
+    p_kiss [label="Steve Kiss (Aegon)\nOnboarding contact\nLanding-zone requests"
+            shape=ellipse fontsize=9 fillcolor="#FF9999" color="#B71C1C"]
+
+    subgraph cluster_barrington {
+      label="Barrington (external vendor)\nBuilds and operates the platform on Aegon's behalf"
+      style=filled fillcolor="#FFD0D0" color="#7B0000" fontsize=10 fontcolor="#7B0000"
+
+      p_stuart [label="Stuart (Barrington)\nPlatform architect\nDay-to-day technical contact"
+                shape=ellipse fontsize=9 fillcolor="#FFB3B3" color="#7B0000"]
+
+      safety [label="AI Safety Layer\nAccess control · Authentication\nGuardrails · Model gateway\nAudit log (call metadata only — no business data at rest)"
+              fillcolor="#FFBBBB" color="#B71C1C"]
+
+      p_stuart -> safety [style=invis]
+    }
+
+    p_dean -> p_kiss [style=invis]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     ZONE 4 — AEGON GOVERNANCE  (amber)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_governance {
+    label="Aegon Governance\n(AI Board · Data owners · Security · Compliance)"
+    style=filled fillcolor="#FFF3CC" color="#F57F17" fontsize=11 fontcolor="#F57F17"
+
+    p_steph [label="Stephanie Reynolds (Aegon)\nArchitecture team\nComponent approval / exception process"
+             shape=ellipse fontsize=9 fillcolor="#FFE07A" color="#F57F17"]
+
+    governance [label="Model approval · Guardrail policy\nData classification + owner sign-off\nAI usage policy · DPIA"
+                fillcolor="#FFE999" color="#F57F17"]
+
+    p_steph -> governance [style=invis]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     ZONE 5 — FOUNDATION MODELS  (grey)
+  ═══════════════════════════════════════════════════════ */
+  subgraph cluster_models {
+    label="Foundation Models\n(Anthropic · Amazon · Meta · others)"
+    style=filled fillcolor="#EEEEEE" color="#616161" fontsize=11 fontcolor="#616161"
+
+    llm [label="Large language model\n(AI reasoning engine)" fillcolor="#E0E0E0" color="#616161"]
+  }
+
+  /* ══════════════════════════════════════════════════════
+     SIMPLIFIED FLOW  (~7 arrows)
+  ═══════════════════════════════════════════════════════ */
+
+  /* 1 — user submits request */
+  user -> app_ui
+    [label="user request" color="#0D47A1" fontcolor="#0D47A1" penwidth=2]
+
+  /* 2 — UI triggers orchestrator */
+  app_ui -> orch
+    [label="trigger workflow" color="#0D47A1" fontcolor="#0D47A1" penwidth=2]
+
+  /* 3 — orchestrator reads / writes data */
+  orch -> app_data
+    [label="reads / writes data" color="#0D47A1" fontcolor="#0D47A1"]
+
+  /* 4 — source data feeds tools */
+  src_data -> app_data
+    [label="approved data sources" color="#2E7D32" fontcolor="#2E7D32" style=dashed]
+
+  /* 5 — every AI call goes through Launchpad (the critical arrow) */
+  orch -> safety
+    [label="every AI call passes through here\n(prompt + data snippet transit — nothing persisted in Launchpad)"
+     color="#B71C1C" fontcolor="#B71C1C" penwidth=2.5]
+
+  /* 6 — Launchpad calls the foundation model */
+  safety -> llm
+    [label="approved model\ninference request" color="#616161" fontcolor="#616161" penwidth=2]
+
+  /* 7 — governance configures Launchpad (one consolidated arrow) */
+  governance -> safety
+    [label="policies + approvals" color="#F57F17" fontcolor="#F57F17" style=dashed penwidth=1.5]
+}

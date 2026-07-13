@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Regenerate all artefacts in showroom/phase2/.
-# Run by the user: bash showroom/phase2/build_all.sh
+# Regenerate all PDFs in meetings/.
+# Run by the user: bash meetings/build_all.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
-REPO_ROOT="$(cd ../.. && pwd)"
+REPO_ROOT="$(cd .. && pwd)"
 TOOLKIT="$REPO_ROOT/.clinerules/pdf-toolkit"
 
 # ── Unicode preprocessing helper ─────────────────────────────────────────────
@@ -43,27 +43,9 @@ build_pdf() {
   rm -f "$tmp"
 }
 
-# ── 1. Render PNGs from Graphviz sources ─────────────────────────────────────
-for dot_file in *.dot; do
-  [ -f "$dot_file" ] || continue
-  png_file="${dot_file%.dot}.png"
-  dot -Tpng "$dot_file" -o "$png_file"
-  echo "OK  $png_file"
-done
-
-# ── 2. Render PNGs from Mermaid sources ──────────────────────────────────────
-for mmd_file in *.mmd; do
-  [ -f "$mmd_file" ] || continue
-  png_file="${mmd_file%.mmd}.png"
-  mmdc -i "$mmd_file" -o "$png_file" -b white -s 3 \
-    --puppeteerConfigFile "$TOOLKIT/puppeteer-config.json"
-  echo "OK  $png_file"
-done
-
-# ── 3. Build PDFs from Markdown sources ──────────────────────────────────────
+# ── Build PDFs from all Markdown files ───────────────────────────────────────
 for md_file in *.md; do
   [ -f "$md_file" ] || continue
-  [ "$md_file" = "README.md" ] && continue
   pdf_file="${md_file%.md}.pdf"
   build_pdf "$md_file" "$pdf_file"
   echo "OK  $pdf_file"

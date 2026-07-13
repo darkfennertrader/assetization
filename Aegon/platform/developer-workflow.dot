@@ -1,0 +1,117 @@
+digraph developer_workflow {
+  graph [
+    rankdir=LR
+    fontname="Helvetica"
+    fontsize=11
+    label="PwC Developer Workflow on Aegon Launchpad"
+    labelloc=t
+    pad=0.4
+    nodesep=0.5
+    ranksep=0.8
+    bgcolor="#FAFAFA"
+  ]
+  node [fontname="Helvetica" fontsize=10 shape=box style="filled,rounded" margin="0.2,0.1"]
+  edge [fontname="Helvetica" fontsize=9]
+
+  /* ── LOCAL DEVELOPMENT ──────────────────────────────── */
+  subgraph cluster_local {
+    label="Developer Laptop"
+    style=filled
+    fillcolor="#DAFFD6"
+    color="#007700"
+    fontsize=10
+
+    ide      [label="IDE / Terminal"            fillcolor="#C8FFC4" color="#007700"]
+    lg_local [label="LangGraph (local run)"     fillcolor="#C8FFC4" color="#007700"]
+    mock     [label="Mock router\n(HTTP stub)"  fillcolor="#C8FFC4" color="#007700"]
+    tests    [label="Unit + integration\ntests" fillcolor="#C8FFC4" color="#007700"]
+
+    ide -> lg_local [label="run"]
+    ide -> tests    [label="test"]
+    lg_local -> mock [label="LLM call\n(mocked)"]
+  }
+
+  /* ── SOURCE CONTROL ─────────────────────────────────── */
+  subgraph cluster_scm {
+    label="Source Control"
+    style=filled
+    fillcolor="#EEF0FF"
+    color="#003399"
+    fontsize=10
+
+    repo    [label="GitHub\n(lighthouse repo)"  fillcolor="#DAE8FF" color="#003399"]
+    pr      [label="Pull Request\n+ review"     fillcolor="#DAE8FF" color="#003399"]
+    main    [label="main branch"               fillcolor="#DAE8FF" color="#003399"]
+
+    repo -> pr   [label="open PR"]
+    pr   -> main [label="merge\n(approved)"]
+  }
+
+  /* ── CI/CD PIPELINE (PwC-owned) ─────────────────────── */
+  subgraph cluster_cicd_pwc {
+    label="PwC CI/CD Pipeline  (GitHub Actions)"
+    style=filled
+    fillcolor="#DAFFD6"
+    color="#007700"
+    fontsize=10
+
+    ga      [label="GitHub Actions"          fillcolor="#C8FFC4" color="#007700"]
+    tf      [label="Terraform apply\n(infra)" fillcolor="#C8FFC4" color="#007700"]
+    deploy  [label="Deploy app\n(ECS / Lambda)" fillcolor="#C8FFC4" color="#007700"]
+
+    ga -> tf     [label="infra"]
+    ga -> deploy [label="app code"]
+  }
+
+  /* ── BUSINESS VPC ───────────────────────────────────── */
+  subgraph cluster_biz {
+    label="Business VPC  (PwC-owned -- in LOB Account)"
+    style=filled
+    fillcolor="#DAFFD6"
+    color="#007700"
+    fontsize=10
+
+    lg_cloud [label="LangGraph\nOrchestrator"         fillcolor="#C8FFC4" color="#007700"]
+    tool_fn  [label="Tool functions"                   fillcolor="#C8FFC4" color="#007700"]
+    db       [label="Database\n(DynamoDB / OpenSearch)" fillcolor="#C8FFC4" color="#007700"]
+    s3       [label="S3 (documents)"                   fillcolor="#C8FFC4" color="#007700"]
+    sm       [label="Secrets Manager\n(API key + HMAC)" fillcolor="#C8FFC4" color="#007700"]
+
+    lg_cloud -> tool_fn [label="call"]
+    tool_fn  -> db      [label="query (local)"]
+    tool_fn  -> s3      [label="fetch (local)"]
+    lg_cloud -> sm      [label="read credentials"]
+  }
+
+  /* ── LAUNCHPAD VPC (off-limits) ─────────────────────── */
+  subgraph cluster_lp {
+    label="Launchpad VPC  [READ-ONLY -- do not modify]"
+    style=filled
+    fillcolor="#FFF0F0"
+    color="#CC0000"
+    fontsize=10
+
+    router2  [label="Router + Guardrail\n(Launchpad-managed)" fillcolor="#FFDADA" color="#CC0000"]
+    bedrock2 [label="Amazon Bedrock"                           fillcolor="#DAE8FF" color="#003399"]
+
+    router2 -> bedrock2 [label="invoke model"]
+  }
+
+  /* ── FLOWS ──────────────────────────────────────────── */
+  ide  -> repo    [label="git push"]
+  main -> ga      [label="trigger CI/CD\non merge"]
+  tf   -> db      [label="provision" color="#007700" fontcolor="#007700" style=dashed]
+  deploy -> lg_cloud [label="deploy" color="#007700" fontcolor="#007700" style=dashed]
+
+  lg_cloud -> router2 [label="HMAC signed\nHTTP call" color="#003399" fontcolor="#003399" penwidth=2]
+  bedrock2 -> lg_cloud [label="completion" color="#003399" fontcolor="#003399" penwidth=2 style=dashed]
+
+  /* ── DO-NOT-TOUCH BOX ───────────────────────────────── */
+  notouch [
+    label="DEVELOPER MUST NEVER\n- Call Bedrock directly (boto3)\n- Modify router or guardrail\n- Put data in Launchpad VPC\n- Bypass HMAC auth"
+    shape=note
+    fillcolor="#FFEEEE"
+    color="#CC0000"
+    fontsize=9
+  ]
+}

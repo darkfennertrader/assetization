@@ -1,112 +1,237 @@
-digraph showroom_azure {
+digraph showroom_phase2 {
   graph [
-    rankdir=LR
+    rankdir=TB
     fontname="Helvetica"
     fontsize=11
     pad=0.6
-    splines=ortho
+    splines=polyline
     bgcolor="white"
-    label="PwC Showroom — Azure Architecture (L1 + L4 Substrate)"
+    label="PwC Showroom Phase 2 — Azure Architecture\n(QR dropped · Google + Microsoft OAuth · APIM deferred to Phase 3)"
     labelloc=b
     labeljust=c
-    nodesep=0.5
+    nodesep=0.6
     ranksep=0.9
   ]
   node [fontname="Helvetica" fontsize=9 style=filled shape=box]
   edge [fontname="Helvetica" fontsize=8]
 
-  // ─── USERS ──────────────────────────────────────────────────
+  // ─── USERS ───────────────────────────────────────────────────────
   subgraph cluster_users {
     label="Users"
     style=filled fillcolor="#FAFAFA" color="#AAAAAA"
     fontsize=10 fontname="Helvetica-Bold"
 
-    presenter [label="Presenter\n(PwC salesperson\nlaptop browser)" fillcolor="#FFD8A0" color="#C86400" shape=ellipse]
-    prospect  [label="Prospect\n(external guest\nphone browser)"  fillcolor="#FFD8A0" color="#C86400" shape=ellipse]
+    presenter [
+      label="Presenter\n(PwC salesperson\nEntra ID login)"
+      fillcolor="#FFD8A0" color="#C86400" shape=ellipse
+    ]
+    prospect [
+      label="Prospect\n(external guest\nGoogle or Microsoft login)"
+      fillcolor="#BBDEFB" color="#1B4F8A" shape=ellipse
+    ]
   }
 
-  // ─── EDGE & DNS ──────────────────────────────────────────────
+  // ─── EDGE & DNS ───────────────────────────────────────────────────
   subgraph cluster_edge {
-    label="Edge & DNS  (L4 Substrate)"
+    label="Edge & DNS"
     style=filled fillcolor="#EEEEEE" color="#444444"
     fontsize=10 fontname="Helvetica-Bold"
 
-    dns [label="Azure DNS\nadmin.showroom.pwc.example\nshowroom.pwc.example" fillcolor="#E0E0E0" color="#444444"]
-    afd [label="Azure Front Door\nStandard/Premium\nGlobal CDN · TLS · multi-origin" fillcolor="#D0D0D0" color="#444444"]
-    waf [label="Front Door WAF Policy\nOWASP CRS 3.2\nBot manager · Rate limit" fillcolor="#D0D0D0" color="#444444" shape=diamond]
+    dns [
+      label="Azure DNS\nshowroom.pwc.example\nadmin.showroom.pwc.example"
+      fillcolor="#E0E0E0" color="#444444"
+    ]
+    afd [
+      label="Azure Front Door\nStandard\nGlobal CDN · TLS · multi-origin"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+    waf [
+      label="Front Door WAF Policy\nOWASP CRS 3.2\nBot manager · Rate limit"
+      fillcolor="#D0D0D0" color="#444444" shape=diamond
+    ]
 
     dns -> afd [label="CNAME" color="#444444"]
     afd -> waf [label="inspect every\ninbound request" color="#444444"]
   }
 
-  // ─── IDENTITY ────────────────────────────────────────────────
+  // ─── IDENTITY PROVIDERS ───────────────────────────────────────────
   subgraph cluster_identity {
-    label="Identity  (L4 Substrate)"
+    label="Identity Providers"
     style=filled fillcolor="#EEEEEE" color="#444444"
     fontsize=10 fontname="Helvetica-Bold"
 
-    entraid [label="Entra ID\n(PwC tenant)\nSSO for Presenter Admin\nPKCE Bearer token" fillcolor="#D0D0D0" color="#444444"]
-    keyvault [label="Azure Key Vault\nRS256 JWT signing key\nManaged Identity access only\nno stored credentials" fillcolor="#D0D0D0" color="#444444" shape=cylinder]
+    entraid [
+      label="PwC Entra ID\n(corporate tenant)\nPresenter Admin auth\nPKCE · groups claim"
+      fillcolor="#D0D0D0" color="#444444"
+    ]
+    google_oauth [
+      label="Google OAuth 2.0\n(consumer accounts)\nProspect auth"
+      fillcolor="#D8F0D8" color="#2E7D32"
+    ]
+    ms_consumer [
+      label="Microsoft OAuth\n(consumer accounts)\nProspect auth"
+      fillcolor="#D0E8FF" color="#1B4F8A"
+    ]
   }
 
-  // ─── API GATEWAY ─────────────────────────────────────────────
-  subgraph cluster_apim {
-    label="AI Gateway — Azure APIM  (L4 Substrate)"
-    style=filled fillcolor="#EEEEEE" color="#444444"
-    fontsize=10 fontname="Helvetica-Bold"
-
-    apim [label="Azure API Management\nStandard v2\nvalidate-jwt (inline RS256)\nrate-limit-by-key (sub)\nAzure AI Content Safety\ntoken-quota + cost tagging\nlog-to-eventhub (audit)" fillcolor="#C8C8C8" color="#444444"]
-    contentsafety [label="Azure AI\nContent Safety\n(inline moderation)" fillcolor="#D8D8D8" color="#444444"]
-
-    apim -> contentsafety [label="agent inputs\n+ outputs" color="#444444"]
-  }
-
-  // ─── SHOWROOM APPLICATION ────────────────────────────────────
+  // ─── SHOWROOM APPLICATION ─────────────────────────────────────────
   subgraph cluster_showroom_app {
     label="L1 — SHOWROOM  (rg-pwc-showroom-westeurope)"
     style=filled fillcolor="#FFF0E0" color="#C86400"
     fontsize=11 fontname="Helvetica-Bold"
 
     subgraph cluster_aca {
-      label="Azure Container Apps Environment\nshowroom-aca-env  (West Europe)"
+      label="Azure Container Apps Environment\nshowroom-aca-env  (West Europe · scale 0-10)"
       style=filled fillcolor="#FFE8CC" color="#C86400"
       fontsize=10
 
-      showroom_app [label="Container App\nshowroom-app\n(Next.js — Option A: single app)\n---\n/admin/* — Presenter Admin (Entra ID)\n/demo/[id] — Prospect UI (JWT cookie)\n/enter   — cookie setter + redirect\n/api/sessions — create session\n/api/session/refresh — silent refresh\n---\nSystem Managed Identity\nscale-to-zero when idle" fillcolor="#FFD8A0" color="#C86400"]
+      showroom_app [
+        label="Container App: showroom-app\n(Next.js — single codebase, two audiences)\n---\n/admin/*  Presenter Admin  (Entra ID session)\n/demo/[id]  Prospect UI  (OAuth session)\n/api/auth/[...nextauth]  All providers\n/api/demos  Authorized demo list\n/api/internal/demo-usage  Callback\n---\nSystem Managed Identity\nScale-to-zero when idle"
+        fillcolor="#FFD8A0" color="#C86400"
+        width=4.2
+      ]
     }
 
-    acr [label="Azure Container Registry\npwcaimktplace.azurecr.io\nshowroom-app:<version>\nSigned images (notation)\nManaged Identity pull" fillcolor="#FFD8A0" color="#C86400" shape=cylinder]
-    cosmos [label="Azure Cosmos DB\nServerless (bursty traffic)\nDatabase: showroom\nContainer: sessions\n{ sessionId, demoIds[]\n  expiresAt, status, presenterId }\nPartition key: /presenterId\nTTL: off (managed in code)" fillcolor="#FFD8A0" color="#C86400" shape=cylinder]
+    func_warm [
+      label="Azure Function\n(keep-warm)\nTimer: every 5 min\noffice hours only\n~2 EUR/month"
+      fillcolor="#FFD8A0" color="#C86400"
+      style="filled,dashed"
+    ]
 
-    showroom_app -> cosmos [label="read/write\nsession record" color="#C86400" fontcolor="#C86400"]
-    acr -> showroom_app [label="pull image\n(Managed Identity)" color="#C86400" fontcolor="#C86400" style=dashed]
+    acr [
+      label="Azure Container Registry\n(shared)\nshowroom-app:<version>\nSigned images (Notation)\nManaged Identity pull"
+      fillcolor="#FFD8A0" color="#C86400" shape=cylinder
+    ]
+
+    keyvault [
+      label="Azure Key Vault\nAUTH_SECRET\nGoogle client secret\nMicrosoft client secret\ndemo-handoff private key (RSA-256)\nManaged Identity access only"
+      fillcolor="#FFF3E0" color="#E65100" shape=cylinder
+    ]
+
+    func_warm -> showroom_app [
+      label="GET / (keep-warm ping)"
+      color="#C86400" fontcolor="#C86400"
+      style=dashed
+    ]
+    acr -> showroom_app [
+      label="pull image\n(Managed Identity)"
+      color="#C86400" fontcolor="#C86400"
+      style=dashed
+    ]
+    showroom_app -> keyvault [
+      label="read secrets\n(Managed Identity)"
+      color="#E65100" fontcolor="#E65100"
+      style=dashed
+    ]
   }
 
-  // ─── OBSERVABILITY ───────────────────────────────────────────
+  // ─── TRACKING LAYER (COSMOS DB) ───────────────────────────────────
+  subgraph cluster_cosmos {
+    label="Tracking Layer — Cosmos DB Serverless\nDatabase: showroom"
+    style=filled fillcolor="#FFF8E1" color="#F57F17"
+    fontsize=10 fontname="Helvetica-Bold"
+
+    cosmos_users [
+      label="Container: users\nPartition: /email\n{ email, provider, allowedDemoIds[]\n  messageQuotaRemaining\n  firstSeenAt, lastSeenAt\n  totalConnections, status }"
+      fillcolor="#FFECB3" color="#F57F17" shape=cylinder
+    ]
+    cosmos_conn [
+      label="Container: connection_events\nPartition: /email\n{ email, connectionAt, ip }"
+      fillcolor="#FFECB3" color="#F57F17" shape=cylinder
+    ]
+    cosmos_visits [
+      label="Container: demo_visits\nPartition: /email\n{ email, demoId, openedAt\n  closedAt, messageCount }"
+      fillcolor="#FFECB3" color="#F57F17" shape=cylinder
+    ]
+  }
+
+  // ─── OBSERVABILITY ────────────────────────────────────────────────
   subgraph cluster_obs {
-    label="Observability  (L4 Substrate — always on)"
+    label="Observability"
     style=filled fillcolor="#F5F5F5" color="#888888"
     fontsize=10 fontname="Helvetica-Bold"
 
-    appins [label="Application Insights\n+ RUM (presenter + prospect)\nShowroomSessionCreated/Ended\ncustom events + sessionId dim" fillcolor="#E8E8E8" color="#888888"]
-    loganalytics [label="Log Analytics Workspace\nAPIM diagnostic logs\nACA container logs\nApp Insights telemetry sink" fillcolor="#E8E8E8" color="#888888"]
-    eventhub [label="Azure Event Hub\nAPIM audit stream\n(every request + response)" fillcolor="#E8E8E8" color="#888888"]
-    adls [label="ADLS Gen2\nImmutable audit log\n2-year retention\nEU residency" fillcolor="#E8E8E8" color="#888888" shape=cylinder]
-    workbook [label="Azure Workbook\nPresenter analytics embed\nSessions/week · avg duration\nmost-viewed demo" fillcolor="#E8E8E8" color="#888888"]
+    appins [
+      label="Application Insights\ncustom events only\nProspectLoggedIn · DemoOpened\nUsageReported\nemail_hashed custom dimension"
+      fillcolor="#E8E8E8" color="#888888"
+    ]
+    loganalytics [
+      label="Log Analytics Workspace\nApp Insights telemetry sink\nACA container logs"
+      fillcolor="#E8E8E8" color="#888888"
+    ]
 
     appins -> loganalytics [color="#888888"]
-    eventhub -> adls [label="capture" color="#888888"]
-    loganalytics -> workbook [label="query" color="#888888"]
   }
 
-  // ─── FLOWS ───────────────────────────────────────────────────
-  presenter -> dns [label="admin.showroom.pwc.example\nHTTPS" color="#C86400" fontcolor="#C86400"]
-  prospect  -> dns [label="showroom.pwc.example\nHTTPS (QR scan)" color="#C86400" fontcolor="#C86400"]
-  waf -> apim [label="clean traffic\nforwarded" color="#444444"]
-  entraid -> apim [label="Bearer token\nvalidation (admin)" color="#444444" fontcolor="#444444"]
-  keyvault -> apim [label="RS256 public key\n(JWKS endpoint)" color="#444444" fontcolor="#444444" style=dashed]
-  keyvault -> showroom_app [label="RS256 private key\n(Managed Identity)" color="#C86400" fontcolor="#C86400" style=dashed]
-  apim -> showroom_app [label="authenticated requests\n(all routes)" color="#444444"]
-  apim -> eventhub [label="audit log\n(sidecar)" color="#888888" style=dashed]
-  showroom_app -> appins [label="RUM + events\n(sidecar)" color="#888888" style=dashed]
+  // ─── DEMO APPS ────────────────────────────────────────────────────
+  demo_apps [
+    label="Demo Apps\n(Overwatch · UBO · ...)\nEach: independent ACA app\nown URL (launchUrl)\nreports messageCount\nvia callback POST"
+    fillcolor="#E8F5E9" color="#2E7D32"
+    width=3.4
+  ]
+
+  // ─── FLOWS ────────────────────────────────────────────────────────
+
+  // Inbound traffic
+  presenter -> dns [label="admin.showroom.pwc.example" color="#C86400" fontcolor="#C86400"]
+  prospect  -> dns [label="showroom.pwc.example" color="#1B4F8A" fontcolor="#1B4F8A"]
+  waf -> showroom_app [label="clean traffic\n(Front Door private link)" color="#444444"]
+
+  // Auth providers -> app
+  entraid   -> showroom_app [label="ID token\n(groups claim)" color="#444444" fontcolor="#444444" style=dashed]
+  google_oauth  -> showroom_app [label="OAuth callback\n(email, sub)" color="#2E7D32" fontcolor="#2E7D32" style=dashed]
+  ms_consumer   -> showroom_app [label="OAuth callback\n(email, sub)" color="#1B4F8A" fontcolor="#1B4F8A" style=dashed]
+
+  // App -> tracking layer
+  showroom_app -> cosmos_users  [label="read/write\nallow-list + quota" color="#F57F17" fontcolor="#F57F17"]
+  showroom_app -> cosmos_conn   [label="write on every login" color="#F57F17" fontcolor="#F57F17"]
+  showroom_app -> cosmos_visits [label="write on demo open\nupdate on callback" color="#F57F17" fontcolor="#F57F17"]
+
+  // App -> observability
+  showroom_app -> appins [label="custom events" color="#888888" fontcolor="#888888" style=dashed]
+
+  // JWKS source: Key Vault public key projected into RAM cache
+  keyvault -> showroom_app [
+    label="public JWK\n(for JWKS endpoint\n15 min RAM cache)"
+    color="#E65100" fontcolor="#E65100"
+    style=dashed
+  ]
+
+  // Demo app launch + callback
+  showroom_app -> demo_apps [label="auto-POST form\nJWT handoff (60 s TTL)" color="#2E7D32" fontcolor="#2E7D32"]
+  demo_apps -> showroom_app [label="GET /.well-known/jwks.json\n(KV-backed · 24 h client cache)" color="#2E7D32" fontcolor="#2E7D32" style=dashed]
+  demo_apps -> showroom_app [label="POST /api/internal/demo-usage\n(messageCount callback)" color="#2E7D32" fontcolor="#2E7D32" style=dashed]
+
+  // ─── LEGEND ───────────────────────────────────────────────────────
+  legend [
+    shape=none margin=0
+    label=<
+      <table border="1" cellborder="0" cellspacing="0" cellpadding="5"
+             bgcolor="#F8F8F8" color="#AAAAAA">
+        <tr><td colspan="2" align="center"><b>Legend</b></td></tr>
+        <tr>
+          <td align="right"><b>&#8212;&#8212;</b></td>
+          <td align="left">solid = user request path</td>
+        </tr>
+        <tr>
+          <td align="right"><b>- - -</b></td>
+          <td align="left">dashed = background / server-to-server / startup</td>
+        </tr>
+        <tr>
+          <td align="right">dashed box</td>
+          <td align="left">component not on the per-request critical path</td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            <font point-size="9">
+              orange = showroom app &#160;&#183;&#160; blue = prospect auth &#160;&#183;&#160;
+              green = demo apps &#160;&#183;&#160; amber = tracking layer &#160;&#183;&#160;
+              dark = PwC internal
+            </font>
+          </td>
+        </tr>
+      </table>
+    >
+  ]
+  { rank=sink; legend }
 }
