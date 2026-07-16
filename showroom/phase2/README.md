@@ -12,7 +12,7 @@ quota layer backed by Cosmos DB Serverless.
 |---|---|
 | QR code | **Dropped.** No development value vs OAuth login friction. |
 | External auth | Google OAuth + Microsoft consumer OAuth via NextAuth (no account creation). |
-| APIM | **Deferred to Phase 3.** Phase 2 uses NextAuth-only stack (~220 EUR/month saving). |
+| APIM | **Not used in Phase 2.** Phase 2 uses NextAuth-only stack (~220 EUR/month saving). |
 | Tracking | Cosmos DB Serverless: `users`, `connection_events`, `demo_visits` containers. |
 | Access control | Presenter-managed email allow-list + per-user `allowedDemoIds` array. |
 | Session | NextAuth httpOnly encrypted cookie. Idle 1h, absolute 8h. No Redis. |
@@ -22,7 +22,7 @@ quota layer backed by Cosmos DB Serverless.
 
 | File | Description |
 |---|---|
-| `showroom-azure-architecture.md` / `.pdf` | Azure service topology: Front Door, WAF, ACA, Cosmos DB, Key Vault, ACR, App Insights. Service rationale, networking model, Cosmos schema, cost estimate (~44 EUR/month idle), IaC, Phase 3 upgrade path. |
+| `showroom-azure-architecture.md` / `.pdf` | Azure service topology: Front Door, WAF, ACA, Cosmos DB, Key Vault, ACR, App Insights. Service rationale, networking model, Cosmos schema, cost estimate (~44 EUR/month idle), IaC. |
 | `showroom-azure-architecture.dot` / `.png` | Graphviz source and rendered diagram — three-tier layout: users, edge+identity, ACA app, Cosmos tracking layer, observability. |
 | `showroom-external-auth-flow.md` / `.pdf` | Auth and tracking flow: Presenter Admin (Entra ID) + Prospect (Google/MS OAuth), 13-step walkthrough, Cosmos writes, usage callback contract, session model, security properties. |
 | `showroom-external-auth-flow.dot` / `.png` | Graphviz source — three swimlanes: Presenter / BFF+Tracking / Prospect. |
@@ -37,13 +37,13 @@ Renders both PNGs and builds both PDFs.
 
 ## Phase scope
 
-| Concern | Phase 1 | Phase 2 (this folder) | Phase 3 (future) |
-|---|---|---|---|
-| Users | Internal PwC (Entra ID) | + External prospects (Google / MS OAuth) | unchanged |
-| Auth enforcement | NextAuth (PwC Entra ID) | NextAuth (3 providers) | + APIM validate-jwt |
-| Demo access control | `demo-map.json` keyed on OID | Cosmos `users.allowedDemoIds[]` | + OpenFGA if needed |
-| Usage tracking | None | Cosmos `connection_events` + `demo_visits` | + Event Hub audit |
-| Rate limiting | None | BFF middleware (quota counter in Cosmos) | APIM `rate-limit-by-key` |
-| Content Safety | None | None | APIM Azure AI Content Safety |
-| Audit log | ACA container logs | App Insights custom events | ADLS Gen2 WORM |
-| Cost (idle) | ~5 EUR/month | ~44 EUR/month | ~264 EUR/month (APIM shared) |
+| Concern | Phase 1 | Phase 2 (this folder) |
+|---|---|---|
+| Users | Internal PwC (Entra ID) | + External prospects (Google / MS OAuth) |
+| Auth enforcement | NextAuth (PwC Entra ID) | NextAuth (3 providers) |
+| Demo access control | `demo-map.json` keyed on OID | Cosmos `users.allowedDemoIds[]` |
+| Usage tracking | None | Cosmos `connection_events` + `demo_visits` |
+| Rate limiting | None | BFF middleware (quota counter in Cosmos) |
+| Content Safety | None | None |
+| Audit log | ACA container logs | App Insights custom events |
+| Cost (idle) | ~5 EUR/month | ~44 EUR/month |

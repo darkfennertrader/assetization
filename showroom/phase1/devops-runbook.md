@@ -142,7 +142,11 @@ using a client secret. The redirect URI must be registered under the **Web**
 platform in the App Registration (not under SPA), pointing to the showroom
 ACA FQDN callback route (`/api/auth/callback/azure-ad`). Add a second redirect
 URI for local development (<http://localhost:3000/api/auth/callback/azure-ad>).
-Enable the `groups` claim (Security Group Object IDs) in the ID token. Generate
+Enable the `groups` claim (Security Group Object IDs) in the ID token. Also
+add the `GroupMember.Read.All` delegated permission and request admin consent
+from the Entra tenant admin — without this permission the BFF cannot resolve
+group memberships for users who belong to more than 200 groups (Microsoft's
+transitive-membership overage threshold). Generate
 a client secret (12-month expiry) and store it in the showroom's Key Vault
 (`kv-pwc-showroom-<env>-<region>`) under the name `showroom-client-secret`. The
 raw value is **never** delivered to the developer and **never** placed in the
@@ -337,8 +341,8 @@ reach demo apps in any resource group or subscription.
 | Azure Function (warmer) | `func-pwc-showroom-<env>-<region>` | Consumption plan; runtime is DevOps's choice. Lives in `rg-pwc-showroom-<env>-<region>`. |
 | Timezone setting | `WEBSITE_TIME_ZONE` = `W. Europe Standard Time` | CRON evaluates in CET |
 | Schedule | `0 */5 9-18 * * 1-5` | Every 5 min, 09:00–18:59 CET, Mon–Fri |
-| Target — showroom | `xxx (to be defined — showroom ACA FQDN)/api/health` | HTTPS GET, no auth. Replace with the real FQDN once provisioned. |
-| Target — overwatch | `xxx (to be defined — overwatch ACA FQDN)/api/health` | HTTPS GET, no auth. Replace with the real FQDN once the demo team provides it. |
+| Target — showroom | `<showroom-FQDN>/api/health` | HTTPS GET, no auth. Replace with the real FQDN once provisioned. |
+| Target — overwatch | `<overwatch-FQDN>/api/health` | HTTPS GET, no auth. Replace with the real FQDN once the demo team provides it. |
 | Response contract | `200 OK` within 200 ms | Endpoint must not traverse BFF or demo-map logic |
 | Expected cost | ~EUR 1.75/month | Function Consumption free tier covers execution; ACA compute dominates |
 
@@ -348,8 +352,8 @@ Add a row to the targets table each time a new scale-to-zero demo is on-boarded.
 
 | Demo | Demo team ACA FQDN (launchUrl) | App Registration name | Repository | Pipeline owner |
 |---|---|---|---|---|
-| Overwatch | `xxx (to be defined by the Overwatch team)` | `xxx (to be defined)` | TBC | Demo team |
-| UBO | `xxx (to be defined by the UBO team)` | `xxx (to be defined)` | TBC | Demo team |
+| Overwatch | `TBD — Overwatch team to provide` | `TBD` | TBC | Demo team |
+| UBO | `TBD — UBO team to provide` | `TBD` | TBC | Demo team |
 
 Add a row to this table each time a new demo is on-boarded into the showroom
 catalog. The on-boarding steps are: (1) demo team provides `launchUrl`; (2) DevOps

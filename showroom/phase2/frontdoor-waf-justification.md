@@ -53,8 +53,6 @@ Showroom is unavailable to live prospects.
 ## Bottom line
 
 ~60 EUR/month buys enterprise-grade edge protection from the moment
-`showroom.pwc.example` appears in public DNS. Phase 3 (APIM gateway layer) does
-not replace Front Door: the correct Phase 3 stack is
-Front Door + WAF at edge → APIM at gateway → ACA at backend — each layer with a
-distinct, non-overlapping responsibility. Front Door cost therefore persists and
-is justified across all future phases.
+`showroom.pwc.example` appears in public DNS. Front Door and WAF each have a
+distinct, non-overlapping responsibility from any gateway or backend layer added
+later. The Front Door cost is a fixed baseline justified on its own merits.

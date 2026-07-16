@@ -9,8 +9,8 @@ sequenceDiagram
     participant A as App Insights<br/>(custom events)
     participant D as Demo app<br/>(Overwatch / UBO / …)
 
-    B->>F: GET https://showroom.pwc.example/
-    F->>S: clean traffic (WAF passed · Front Door private link)
+    B->>F: GET showroom.pwc.example/
+    F->>S: clean traffic (WAF passed · IP allowlist + FDID header)
     S-->>B: 302 → /api/auth/signin (no session cookie found)
 
     B->>S: GET /api/auth/signin
@@ -39,7 +39,7 @@ sequenceDiagram
             S->>C: INSERT connection_events { email, connectionAt, ip, userAgent }
             S->>C: UPDATE users { totalConnections++, lastSeenAt }
             S->>A: ProspectLoggedIn { email_hashed, provider }
-            S-->>B: session cookie (httpOnly · Secure · SameSite=Lax · 7d idle / 7d absolute)
+            S-->>B: session cookie (httpOnly · Secure · SameSite=Lax · 24h idle / 7d absolute)
         end
     end
 
@@ -61,9 +61,9 @@ sequenceDiagram
 
     B->>S: Click demo tile (e.g. Overwatch)
     S->>C: INSERT demo_visits { visitId: uuid, email, demoId, openedAt }
-    S->>KV: read demo-handoff private key (Managed Identity)
-    KV-->>S: private key (RSA-256)
-    S->>S: mint JWT { iss, aud: demoId, sub: email,<br/>visitId, iat, exp = now+60s, kid }
+    S->>KV: Sign API — sign JWT payload (Managed Identity)
+    KV-->>S: RSA-256 signature (private key never leaves KV)
+    S->>S: assemble JWT { iss, aud: demoId, sub: email,<br/>visitId, iat, exp = now+60s, kid }
     S->>A: DemoOpened { email_hashed, demoId }
     S-->>B: auto-POST form → demo.launchUrl<br/>(hidden field: token=<signed JWT>)
 

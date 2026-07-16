@@ -63,8 +63,10 @@ Prospect browser
   --> Azure DNS (CNAME to Front Door endpoint)
   --> Azure Front Door PoP (global anycast, TLS termination)
   --> Front Door WAF Policy (OWASP CRS 3.2 + bot manager)
-  --> ACA showroom-app (internal ingress via Front Door private link)
-  --> Next.js middleware: no session cookie -> redirect to /api/auth/signin
+  --> ACA showroom-app
+      (FDID-header + IP-allowlist protected)
+  --> Next.js middleware:
+      no session cookie -> redirect to /api/auth/signin
 ```
 
 ### Step 5 -- Sign-in page
@@ -87,9 +89,15 @@ No new account is created in any PwC system.
 The provider redirects back to the callback path `/api/auth/callback/<provider>`
 with the authorization code. NextAuth exchanges the code for an ID token and reads:
 
-- `email` -- used as the primary key to look up the prospect in Cosmos DB `users`.
-- `sub` -- provider-issued subject claim (stored for deduplication if email changes).
-- `name` -- display name (stored for audit).
+- `email` (with `email_verified = true`) -- used as the primary key to look up
+  the prospect in Cosmos DB `users`. This is the only claim required for
+  authorization decisions. Present because NextAuth's built-in providers
+  request the `email` scope by default; the `signIn` callback rejects the
+  login if `email_verified` is `false`.
+- `sub` -- provider-issued subject identifier. Stored as optional metadata
+  (`providerSub`) for audit and deduplication; never used for AuthZ decisions.
+- `name` -- display name. Stored as optional metadata (`displayName`) for the
+  Presenter Admin UI; never used for AuthZ decisions.
 
 ### Step 8 -- Allow-list check (coarse-grained AuthZ)
 
@@ -107,7 +115,7 @@ NextAuth's `signIn` callback looks up the email in Cosmos DB `users`:
 On successful sign-in:
 
 1. NextAuth creates an encrypted httpOnly session cookie (`AUTH_SECRET` from Key Vault).
-   Session idle timeout: 1 hour. Absolute timeout: 8 hours.
+   Session idle timeout: 24 hours. Absolute timeout: 7 days.
 2. BFF writes a **`connection_events`** document: `{ email, connectionAt, ip, userAgent }`.
 3. BFF updates the **`users`** document: increments `totalConnections`, sets `lastSeenAt`.
 4. BFF emits a **`ProspectLoggedIn`** event to App Insights: `{ email (hashed), provider }`.
@@ -177,10 +185,10 @@ in the Admin panel; this also resets `status` to `active`.
 |---|---|
 | Cookie type | `httpOnly`, `Secure`, `SameSite=Lax` |
 | Encryption | NextAuth `AUTH_SECRET` (from Key Vault, rotated every 90 days) |
-| Idle timeout | 1 hour (NextAuth default session TTL) |
-| Absolute timeout | 8 hours (NextAuth `maxAge` setting) |
+| Idle timeout | 24 hours (NextAuth `updateAge` setting) |
+| Absolute timeout | 7 days (NextAuth `maxAge` setting) |
 | Refresh | Automatic -- NextAuth refreshes the cookie on every server request |
-| Revocation | Set `status = banned` in Cosmos. Next sign-in is denied. Current active session expires within the idle timeout (1 hour maximum window). |
+| Revocation | Set `status = banned` in Cosmos. Next sign-in is denied. Current active session expires within the idle timeout (24 hour maximum window). |
 
 No Redis is required. No token signing key is required. No silent refresh loop is required.
 This is a standard NextAuth session -- significantly simpler than the Phase 2 QR design.
@@ -192,7 +200,7 @@ This is a standard NextAuth session -- significantly simpler than the Phase 2 QR
 | No account creation for the prospect | Google / Microsoft OAuth | Zero PwC identity lifecycle for the prospect |
 | Scoped access -- only presenter-selected demos | Cosmos `allowedDemoIds` in session | BFF returns only allowed tiles on every `/api/demos` request |
 | Quota enforcement | Cosmos `messageQuotaRemaining` | Demo apps report usage; BFF decrements and blocks when exhausted |
-| Revocation | Cosmos `status = banned` | Effective on next sign-in (within 1h worst case for active sessions) |
+| Revocation | Cosmos `status = banned` | Effective on next sign-in (within 24h worst case for active sessions) |
 | WAF protection | Front Door WAF (OWASP CRS 3.2 + bot manager) | Edge-layer protection before any traffic reaches ACA |
 | No stored credentials | Key Vault (Managed Identity) + OAuth PKCE | `AUTH_SECRET` and provider client secrets never in environment variables |
 | Audit trail | App Insights custom events + Cosmos `connection_events` + `demo_visits` | Every login and demo visit recorded |
@@ -210,15 +218,3 @@ This is a standard NextAuth session -- significantly simpler than the Phase 2 QR
 | **Analytics per prospect** | Expand row: connection_events timeline, demo_visits with messageCount |
 | **Analytics aggregate** | App Insights queries: logins per week, most popular demo, avg messages per session |
 
-## 8. Phase 3 upgrade path
-
-The Phase 2 session model is fully compatible with Phase 3's APIM layer. When APIM is
-inserted between Front Door and ACA:
-
-- APIM validates the NextAuth session cookie on the `validate-jwt` or `validate-azure-ad-token`
-  policy before requests reach the BFF. Phase 2 middleware remains as defence-in-depth.
-- Rate-limiting per user moves from BFF middleware to APIM `rate-limit-by-key(email)`.
-- Content Safety is applied at APIM for all agent inputs and outputs.
-- Audit log moves from App Insights custom events to APIM -> Event Hub -> ADLS Gen2 (WORM).
-
-No application code changes are required to adopt APIM in Phase 3.

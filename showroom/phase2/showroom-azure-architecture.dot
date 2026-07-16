@@ -6,7 +6,7 @@ digraph showroom_phase2 {
     pad=0.6
     splines=polyline
     bgcolor="white"
-    label="PwC Showroom Phase 2 — Azure Architecture\n(QR dropped · Google + Microsoft OAuth · APIM deferred to Phase 3)"
+    label="PwC Showroom Phase 2 — Azure Architecture\n(QR dropped · Google + Microsoft OAuth · NextAuth-only stack)"
     labelloc=b
     labeljust=c
     nodesep=0.6
@@ -104,7 +104,7 @@ digraph showroom_phase2 {
     ]
 
     keyvault [
-      label="Azure Key Vault\nAUTH_SECRET\nGoogle client secret\nMicrosoft client secret\ndemo-handoff private key (RSA-256)\nManaged Identity access only"
+      label="Azure Key Vault\nAUTH_SECRET\nGoogle client secret\nMicrosoft client secret\ndemo-handoff key (RSA-256, Sign API)\nPrivate key never leaves KV\nManaged Identity access only"
       fillcolor="#FFF3E0" color="#E65100" shape=cylinder
     ]
 
@@ -159,6 +159,10 @@ digraph showroom_phase2 {
       label="Log Analytics Workspace\nApp Insights telemetry sink\nACA container logs"
       fillcolor="#E8E8E8" color="#888888"
     ]
+    workbook [
+      label="Azure Monitor Workbook\nwb-pwc-showroom-usage\nProspect summary\nSign-ins over time\nDemo popularity"
+      fillcolor="#E8E8E8" color="#888888"
+    ]
 
     appins -> loganalytics [color="#888888"]
   }
@@ -175,7 +179,7 @@ digraph showroom_phase2 {
   // Inbound traffic
   presenter -> dns [label="admin.showroom.pwc.example" color="#C86400" fontcolor="#C86400"]
   prospect  -> dns [label="showroom.pwc.example" color="#1B4F8A" fontcolor="#1B4F8A"]
-  waf -> showroom_app [label="clean traffic\n(Front Door private link)" color="#444444"]
+  waf -> showroom_app [label="clean traffic\n(FDID header + IP allowlist)" color="#444444"]
 
   // Auth providers -> app
   entraid   -> showroom_app [label="ID token\n(groups claim)" color="#444444" fontcolor="#444444" style=dashed]
@@ -189,6 +193,11 @@ digraph showroom_phase2 {
 
   // App -> observability
   showroom_app -> appins [label="custom events" color="#888888" fontcolor="#888888" style=dashed]
+
+  // Workbook reads from Cosmos DB (not Log Analytics — business reporting surface)
+  cosmos_users  -> workbook [label="Prospect summary\n(SQL query)" color="#F57F17" fontcolor="#F57F17" style=dashed]
+  cosmos_conn   -> workbook [label="Sign-ins over time\n(SQL query)" color="#F57F17" fontcolor="#F57F17" style=dashed]
+  cosmos_visits -> workbook [label="Demo popularity\n(SQL query)" color="#F57F17" fontcolor="#F57F17" style=dashed]
 
   // JWKS source: Key Vault public key projected into RAM cache
   keyvault -> showroom_app [

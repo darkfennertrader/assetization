@@ -6,7 +6,7 @@ title: "PwC Showroom Phase 2 — Azure Architecture"
 
 **Decision basis:** 2026-07-09 kickoff meeting (see `meetings/2026-07-09-summary.md`).
 **Previous QR-code design superseded** — QR access dropped; Google + Microsoft OAuth adopted.
-**APIM deferred to Phase 3** — Phase 2 uses a NextAuth-only authentication stack.
+**APIM not used** — Phase 2 uses a NextAuth-only authentication stack.
 
 ## 1. Scope
 
@@ -38,13 +38,15 @@ For the overall platform picture see `general_architecture/general-architecture-
 | **Azure Key Vault** | Standard tier | Stores `AUTH_SECRET` (NextAuth encryption key), Google and Microsoft OAuth client secrets. Accessed via Managed Identity only. | Key Vault is the only acceptable location for secrets. No stored connection strings. |
 | **Azure Container Apps** | Consumption plan | Hosts the single Next.js application. Scale-to-zero when idle. HTTP-concurrency scale-out during demo events. | ACA Consumption bills per request-second -- near-zero cost when idle. Scale-to-zero is not available on App Service Standard. AKS is over-engineered for one Next.js app. |
 | **Azure Container Registry** | Standard (shared) | Signed container image `showroom-app:<version>`. Notation signing enforced. Managed Identity pull. | Shared ACR avoids per-product registry overhead. Standard tier supports geo-replication. |
-| **Azure Cosmos DB** | Serverless | User tracking and session analytics. Database `showroom`, three containers (see section 5). No provisioned throughput. | Cosmos Serverless is correct for bursty low-average load. Provisioned throughput wastes ~40 EUR/month minimum at idle. Postgres deferred to Phase 3 if reporting queries grow complex. |
+| **Azure Cosmos DB** | Serverless | User tracking and session analytics. Database `showroom`, three containers (see section 5). No provisioned throughput. | Cosmos Serverless is correct for bursty low-average load. Provisioned throughput wastes ~40 EUR/month minimum at idle. Postgres can be revisited if reporting queries later require SQL joins. |
 | **Azure Function** | Consumption | Keep-warm ping to the ACA app every 5 minutes during office hours. Prevents cold-start latency that could look like an outage to clients. | Cost: approximately 2 EUR/month. The ACA scale-to-zero cold-start from zero is 8-12 seconds -- unacceptable as a first impression during a live demo. |
 | **Application Insights** | Workspace-based | RUM from the Next.js app (presenter + prospect), custom events (`ProspectLoggedIn`, `DemoOpened`, `UsageReported`), all tagged with `userId` as a custom dimension. | Workspace-based App Insights sends all telemetry to Log Analytics -- one query surface. |
 | **Log Analytics Workspace** | Pay-as-you-go | Sink for App Insights telemetry and ACA container logs. Shared with the broader platform workspace. | Shared workspace reduces cost. Showroom data filtered by `cloud_RoleName = showroom-app`. |
 
-**Deferred to Phase 3:** Azure API Management, Azure AI Content Safety, Azure Event Hub,
-ADLS Gen2 immutable audit log, Azure Workbook embedded analytics.
+| **Azure Monitor Workbook** | Standard (free) | Business reporting surface for presenters: prospect table, sign-in time chart, demo popularity chart. Data sourced from Cosmos DB directly, not App Insights. Built by the Full-Stack Developer; RBAC provisioned by DevOps. | App Insights is not the reporting surface for business data — it holds hashed email for operational telemetry only. Cosmos DB holds plain email and is queried directly for reports. |
+
+**Not used in Phase 2:** Azure API Management, Azure AI Content Safety, Azure Event Hub,
+ADLS Gen2 immutable audit log.
 
 ## 4. Networking model
 
@@ -55,30 +57,51 @@ User browser
   --> Azure DNS  (CNAME to Front Door endpoint)
   --> Azure Front Door PoP  (global anycast)
   --> Front Door WAF Policy  (OWASP CRS 3.2 + bot + rate limit)
-  --> ACA showroom-app  (internal ingress via Front Door private link)
+  --> ACA showroom-app
+      (public FQDN, FDID header + IP allowlist)
       Next.js Route Handler
-  --> Cosmos DB  (Private Endpoint on ACA subnet)
-  --> Key Vault  (Private Endpoint on ACA subnet)
+  --> Cosmos DB  (public endpoint, Entra RBAC via Managed Identity)
+  --> Key Vault  (public endpoint, Managed Identity access only)
 ```
 
-### 4.2 Private connectivity
+### 4.2 Origin protection
 
-| Resource | Connectivity | Detail |
+The ACA app has a public FQDN but is protected by two controls:
+
+| Control | Layer | Detail |
 |---|---|---|
-| ACA environment | Internal VNet integration | ACA environment injected into `snet-showroom-aca` in `vnet-showroom-westeurope`. No public IP on the ACA container. All inbound traffic via Front Door private link. |
-| Cosmos DB | Private Endpoint | `pe-cosmos-showroom` on `snet-showroom-pe`. No public network access. ACA resolves via Private DNS zone `privatelink.documents.azure.com`. |
-| Key Vault | Private Endpoint | `pe-kv-showroom` on `snet-showroom-pe`. No public network access. |
-| ACR | Private Endpoint | `pe-acr-showroom` on `snet-showroom-pe`. ACA pulls images via private link. |
+| ACA ingress IP allowlist | Azure network | Ingress accepts source IPs only from `AzureFrontDoor.Backend` service tag. All other sources are dropped. |
+| FDID header check | Application | BFF middleware rejects any request whose `X-Azure-FDID` header does not match the `FRONT_DOOR_ID` env variable (provisioned Front Door instance GUID). |
 
-### 4.3 VNet layout
-
-```
-vnet-showroom-westeurope  (10.100.0.0/16)
-  snet-showroom-aca   10.100.0.0/23   ACA environment subnet
-  snet-showroom-pe    10.100.2.0/24   Private Endpoints (Cosmos, KV, ACR)
-```
+No VNet, no Private Endpoints, no private DNS zones are required in Phase 2.
 
 ## 5. Cosmos DB schema — tracking layer
+
+### Phase 1 vs. Phase 2 — what moved to Cosmos and what stayed in git
+
+In Phase 1 a single file `demo-map.json` baked into the container image held two
+concerns: (1) the **demo catalog** (id, title, thumbnail, launchUrl, description)
+and (2) the **AuthZ mapping** (which Entra `oid` may see which tiles).
+
+In Phase 2 these two concerns are separated:
+
+| Concern | Phase 1 | Phase 2 |
+|---|---|---|
+| Demo catalog metadata (id, title, thumbnail, launchUrl) | `demo-map.json` — AuthZ block + catalog in one file | `demo-map.json` — catalog block only (AuthZ block removed) |
+| Coarse AuthZ (is this user allowed in?) | Entra security-group membership (Layer 1) | Cosmos `users` document existence + `status = active` |
+| Fine-grained AuthZ (which tiles may this user see?) | `demo-map.json` AuthZ block keyed by Entra `oid` | Cosmos `users.allowedDemoIds` — edited at runtime by presenters |
+| Per-user quota | Not applicable (internal staff) | Cosmos `users.messageQuotaRemaining` |
+
+**Why the catalog stays in git, not in Cosmos.** Adding a demo tile is never
+only a metadata change: it requires DevOps to add the demo's Managed Identity to
+ACR, provision a callback shared secret in Key Vault, add a synthetic-monitoring
+row, and confirm the demo team has implemented JWT verification. All of these
+travel together in one PR. A Cosmos-backed tile form would create the illusion of
+self-service on-boarding while the engineering steps still require a deploy; it
+would also lose version history, code review, and environment-parity guarantees
+that git provides at zero cost. Cosmos is correct for per-user runtime state that
+changes many times per day; git is correct for per-release configuration that
+changes once every one to three months when a new demo joins.
 
 Database: `showroom`
 
@@ -93,8 +116,8 @@ One document per external identity. Created on first successful OAuth login.
   "id": "<email>",
   "email": "prospect@example.com",
   "provider": "google",
-  "providerSub": "<provider-issued subject claim>",
-  "displayName": "Jane Prospect",
+  "providerSub": "<optional: provider subject claim>",
+  "displayName": "<optional: display name from profile scope>",
   "firstSeenAt": "2026-07-09T10:00:00Z",
   "lastSeenAt": "2026-07-09T14:30:00Z",
   "totalConnections": 3,
@@ -104,6 +127,11 @@ One document per external identity. Created on first successful OAuth login.
   "status": "active"
 }
 ```
+
+`email` is the only required field. `providerSub` and `displayName` are
+optional metadata captured by NextAuth when the provider returns them (which
+it does by default with `openid email profile` scopes); they are never read for
+authorization decisions.
 
 `status` values: `active` (default), `banned` (blocked by presenter), `pending` (invited but not yet logged in).
 
@@ -172,7 +200,7 @@ Each demo app must report message counts back to the showroom so the quota layer
 **Endpoint:** `POST` <https://showroom.pwc.example/api/internal/demo-usage>
 
 **Authentication:** Shared secret header `X-Demo-Callback-Secret` (value stored in Key Vault,
-injected into demo app environment at deploy time). Phase 3 will migrate this to Managed Identity.
+injected into demo app environment at deploy time).
 
 **Request body:**
 
@@ -222,8 +250,7 @@ Peak estimate: 5 events in parallel, 20 prospects each = 100 concurrent sessions
 | **Total (Phase 2)** | **~44 EUR/month** | **~77 EUR/month** | **~182 EUR/month** |
 
 Compared to the original Phase 2 design with APIM Standard v2 (~267 EUR/month idle),
-this saves approximately 220 EUR/month at idle. APIM cost is recovered in Phase 3 when
-it is shared across the full platform (Showroom + Marketplace + Knowledge Base).
+this saves approximately 220 EUR/month at idle.
 
 ## 9. Deployment topology
 
@@ -261,13 +288,14 @@ app/
     page.tsx            prospect allow-list management
     new/page.tsx        add / edit prospect (email, demoIds, quota)
     analytics/          usage dashboard (App Insights queries)
-  demo/[demoId]/      Prospect UI  (requires OAuth session, demo in allowedDemoIds)
+  demo/[demoId]/      Prospect UI
+                      (requires OAuth session, demo in allowedDemoIds)
     page.tsx
   api/
     auth/[...nextauth]/ NextAuth handler (all providers)
-    demos/              GET -- returns authorized demo list for current session
+    demos/              GET -- authorized demo list for session
     internal/
-      demo-usage/       POST -- callback from demo apps (shared-secret protected)
+      demo-usage/       POST -- callback from demo apps
 ```
 
 ### 10.1 NextAuth provider configuration (sketch)
@@ -284,7 +312,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     MicrosoftEntraID({
       clientId: process.env.ENTRA_CLIENT_ID!,
       clientSecret: process.env.ENTRA_CLIENT_SECRET!,
-      issuer: `https://login.microsoftonline.com/${process.env.ENTRA_TENANT_ID}/v2.0`,
+      issuer: `https://login.microsoftonline.com/` +
+        `${process.env.ENTRA_TENANT_ID}/v2.0`,
     }),
     // External prospects: consumer Microsoft accounts
     MicrosoftEntraID({
@@ -301,7 +330,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   callbacks: {
     async signIn({ user, account }) {
-      if (account?.provider === "microsoft-entra-id") return true; // PwC employees always allowed
+      // PwC employees always allowed
+      if (account?.provider === "microsoft-entra-id") return true;
       // For external providers: look up email in Cosmos users container
       const prospect = await getUserByEmail(user.email!);
       return prospect?.status === "active";
@@ -311,7 +341,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (token.provider !== "microsoft-entra-id") {
         const prospect = await getUserByEmail(session.user.email!);
         session.user.allowedDemoIds = prospect?.allowedDemoIds ?? [];
-        session.user.messageQuotaRemaining = prospect?.messageQuotaRemaining ?? 0;
+        session.user.messageQuotaRemaining =
+          prospect?.messageQuotaRemaining ?? 0;
       }
       return session;
     },
@@ -327,27 +358,17 @@ export async function middleware(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.redirect("/api/auth/signin");
 
-  // On first hit per session: update lastSeenAt, increment totalConnections,
-  // write connection_events document (fire-and-forget, non-blocking)
+  // On first hit per session: update lastSeenAt,
+  // increment totalConnections, write connection_events
+  // (fire-and-forget, non-blocking)
   if (!req.cookies.get("sr_tracked")) {
     void trackConnection(session.user.email!);
     const res = NextResponse.next();
-    res.cookies.set("sr_tracked", "1", { httpOnly: true, maxAge: 3600 });
+    res.cookies.set("sr_tracked", "1",
+      { httpOnly: true, maxAge: 86400 });
     return res;
   }
   return NextResponse.next();
 }
 ```
 
-## 11. Phase 3 upgrade path
-
-When Phase 3 is ready the following are added without changing Phase 2 application code:
-
-- **APIM** inserted between Front Door and ACA: adds Content Safety, rate-limiting per user,
-  Event Hub audit stream, cost tagging. The Phase 2 NextAuth middleware remains as
-  defence-in-depth; APIM becomes the first enforcement point.
-- **Event Hub + ADLS Gen2** for immutable audit log (legal/compliance requirement).
-- **OpenFGA** replaces the `allowedDemoIds` array in Cosmos if RBAC complexity grows.
-- **Postgres Flexible Server** replaces Cosmos if reporting queries require SQL joins.
-- **Shared APIM** across Showroom, Marketplace, and Knowledge Base -- the per-resource
-  ~220 EUR/month cost is amortised across all consumers.
