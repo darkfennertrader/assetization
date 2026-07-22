@@ -1,479 +1,452 @@
 ---
-title: "Showroom Platform Build Checklist"
+title: "Showroom Build Checklist for the Showroom Developer Team"
 ---
 
 ## Purpose and Audience
 
-This document is addressed to the Showroom platform team — the full-stack
-developers and DevOps engineers who build and operate the Showroom portal
-itself. It lists every activity your team must perform to make the Showroom
-ready for both phases of operation.
+This document is addressed to the Full-Stack Developer (and any developer who
+works on the Showroom BFF). It lists every activity the Showroom developer team
+must implement to deliver a platform that is **correct, secure, and ready for
+external prospects**.
 
-**Phase 1** covers the internal catalog: PwC employees log in with their
-corporate Entra ID credentials, browse the catalog, and launch demo
-applications. **Phase 2** extends the platform to external prospects who
-authenticate via Google or Microsoft consumer accounts, routes all external
-traffic through Azure Front Door and WAF, and introduces a JWKS-signed JWT
-hand-off to each demo application.
+**Phase 1** covers the internal PwC employee audience, authenticated via the
+corporate Entra ID tenant. **Phase 2** extends the platform to external
+prospects who sign in via Google or Microsoft consumer accounts, and introduces
+a WAF and CDN layer via Azure Front Door, a signed JWT handoff mechanism for
+demo apps, and usage telemetry via Cosmos DB.
 
-This document is **platform-focused**: it specifies what the Showroom team
-builds and operates, not what each demo team builds.
+This document is **implementation-agnostic**: it specifies *what* to build, not
+which framework or library to use. It contains no code.
 
-**Out of scope:** everything owned by individual demo application teams —
-their App Registrations, their Key Vaults, their container images, their
-Log Analytics workspaces, their PKCE flows, and their JWT-verification code.
-That scope is fully described in `developer-integration-checklist.md` in this
-directory. Both documents reference each other's handoff tables; keep them
-in sync whenever a table row changes.
+**Out of scope:** infrastructure provisioning (Front Door, Cosmos DB, Key Vault,
+App Insights, ACR, DNS, WAF policies, Managed Identity role assignments).
+Those are owned and operated by the Showroom DevOps team and documented in
+the Phase 1 and Phase 2 DevOps runbooks.
 
 
-## Phase 1 Activities — Internal Showroom for PwC Employees
+## Phase 1 Activities — Internal Audience (PwC Employees)
 
-All activities in this section are **mandatory** before Phase 1 go-live.
-Full details for each item are in `showroom/phase1/devops-runbook.md`.
-Section numbers below refer to that runbook.
+Phase 1 delivers the internal catalog portal for PwC employees. Authentication
+is delegated to the corporate PwC Entra ID tenant. All activities in this
+section are **mandatory** before Phase 1 go-live.
 
 
 ### Authentication and Identity
 
-**Register the Showroom's own App Registration.**
-Create `app-pwc-showroom` in the PwC Entra ID tenant as a **Web (confidential
-client)** application (runbook §3.1). This is the Showroom's own identity — not
-to be confused with the separate App Registration that each demo team creates
-for their own application. Register it in the Web platform section with two
-redirect URIs: the ACA default FQDN path `/api/auth/callback/azure-ad` and
-<http://localhost:3000/api/auth/callback/azure-ad> for local development.
-Agree the App Registration name and configuration with the Entra tenant admin
-before provisioning (see §5.1 for the wider-DevOps coordination checklist).
+**Implement OIDC Authorization Code + PKCE in the Showroom BFF.**
+The BFF must generate a `code_verifier` and `code_challenge`, redirect the user
+to the PwC Entra `/authorize` endpoint with the Showroom client ID and scopes,
+exchange the returned code at the `/token` endpoint, and store the resulting
+tokens in an encrypted server-side session. Tokens must not be present in the
+browser at any time.
 
-**Enable the groups claim.**
-In the App Registration's Token configuration, add the `groups` optional claim
-to the ID token and select "Security groups" so that security group Object IDs
-are included. This is mandatory: the Layer-1 group check (see below) reads
-this claim. Also request the `GroupMember.Read.All` delegated permission from the
-Entra tenant admin and obtain admin consent before Phase 1 go-live (runbook §3.1).
-Without it the BFF cannot resolve group memberships for users with more than 200
-group assignments.
+**Retrieve the Entra client secret from Key Vault at startup.**
+The BFF reads `KEY_VAULT_URL` and `CLIENT_SECRET_NAME` from its environment
+variables and authenticates to Key Vault using `DefaultAzureCredential`, which
+picks up the container's system-assigned Managed Identity automatically. The
+resolved secret is held in memory for the lifetime of the process. It is never
+written to disk, logs, or environment variables at rest.
 
-**Store the Showroom client secret in the Showroom Key Vault.**
-The Showroom has its own Key Vault (`kv-pwc-showroom-<env>-<region>`). Store
-the App Registration client secret there. At runtime, the BFF retrieves it via
-the ACA app's system-assigned Managed Identity. Never place the secret in
-environment variables at rest, configuration files, or any source repository.
-Rotate at least annually or immediately upon any suspected exposure.
+**Enforce the Layer-1 group check on every request.**
+After token acquisition, verify that the user's ID token contains the
+`FINCRIME_GROUP_OID` Group Object ID in the `groups` claim. Reject any session
+whose token does not contain this group. Perform the check on every request,
+not only at login time.
 
-**Implement the OIDC Authorization Code + PKCE flow in the Showroom BFF.**
-The BFF generates a `code_verifier` and `code_challenge` on every unauthenticated
-request, stores the verifier in an encrypted HttpOnly cookie, and redirects the
-browser to the Entra `/authorize` endpoint. On the callback the BFF exchanges
-the code at the Entra `/token` endpoint using both the PKCE verifier and the
-client secret, stores the resulting ID token in an encrypted server-side
-session, and never exposes tokens to the browser.
+**Handle group-claim overage gracefully.**
+When a user belongs to more than 200 groups, Entra omits the `groups` claim and
+includes a `_claim_names` hint instead. The BFF must detect this overage
+condition and call the Microsoft Graph `transitiveMemberOf` endpoint to resolve
+group membership. The `GroupMember.Read.All` delegated permission and admin
+consent are provisioned by DevOps (Phase 1 runbook §3.1).
 
-**Enforce Layer-1 authorisation: FinCrime Showroom group check.**
-On every authenticated request, the BFF reads the `groups` claim from the
-session token and checks whether it contains the `FINCRIME_GROUP_OID` value
-(runbook §3.3 and §3.4). If the user is not a member, return a friendly HTML page with
-HTTP 200 — do not use 401 or 403. The Group Object ID is supplied by the Entra
-tenant admin and stored in the BFF configuration.
+**Return a human-readable access-denied page, not HTTP 4xx.**
+When the Layer-1 group check fails, return an HTML page with HTTP **200** and a
+clear message (e.g. *"You do not have access to the PwC AI Showroom. Please
+contact your line manager."*). Do not return 401 or 403 — clients that receive
+those status codes may surface a browser-default error page.
 
-**Enforce Layer-2 authorisation: per-demo tile filtering via demo-map.json.**
-The BFF reads `demo-map.json`, which is baked into the container image at build
-time. This file defines, for each demo, the tile metadata (title, thumbnail URL,
-`launchUrl`) and the authorization entries (which user `oid`s and group OIDs may
-see that demo). The BFF intersects the authenticated user's `oid` and `groups`
-with those entries and returns only the tiles the user is authorized to see
-(runbook §7 and §9). Phase 1 starts with all tiles granted to `FINCRIME_GROUP_OID`;
-the mechanism exists so future per-partner filtering requires only a
-`demo-map.json` edit and a container revision update — no code change.
+**Silent SSO must not re-prompt.**
+When a PwC user is already authenticated to their corporate device, the Showroom
+must detect the existing session and not issue a new login challenge. Use the
+`prompt=none` parameter and handle the `login_required` error gracefully by
+falling back to a visible redirect when truly necessary.
+
+
+### Catalog and Navigation
+
+**Implement the demo catalog from `demo-map.json`.**
+The BFF reads `demo-map.json` from the application bundle (or a well-known
+mounted path) to build the catalog. Each entry provides at minimum the demo
+name, URL slug, thumbnail URL, and the group Object IDs that may access it.
+
+**Enforce the Layer-2 tile filter.**
+For each tile in the catalog, check whether the authenticated user's token
+groups include at least one of the tile's required group Object IDs. Render only
+the tiles the user is authorised to see. A user who passes the Layer-1 check may
+still see an empty catalog if none of their groups match any tile.
+
+**Launch tiles by top-level navigation only.**
+When the user clicks a demo tile, the BFF must redirect the browser to the
+demo's `launchUrl` using a top-level navigation (HTTP redirect or `window.location`
+assignment). Do not embed demos in an `<iframe>` and do not proxy demo traffic
+through the Showroom BFF. The Showroom's responsibility ends at the redirect.
+
+**Propagate the correlation ID.**
+Inject a `traceparent` header (W3C Trace Context) or `X-Request-ID` on all
+outbound requests and log the same value in every log entry for the session.
+Read any inbound `traceparent` and use it as the parent span.
 
 
 ### HTTP Contract
 
-**Publish a stable default FQDN.**
-In Phase 1 the Showroom uses the ACA-assigned default FQDN (a custom domain
-is deferred to Phase 2). Communicate this FQDN to the demo teams as the
-Showroom origin URL they must allow in their CORS policy (see
-`developer-integration-checklist.md` §2.2).
+**Expose an unauthenticated liveness endpoint.**
+Implement `GET /api/health` returning HTTP 200 within 5 seconds, with no
+authentication required. The response body may be minimal (e.g. `{"status":"ok"}`).
+This endpoint is called by the keep-warm timer function (DevOps runbook §8)
+and by Front Door health probes (Phase 2). It must not trigger BFF logic or
+session checks.
 
-**Expose an unauthenticated health endpoint.**
-Implement `/api/health` returning HTTP 200 with a short JSON body. This endpoint
-must not require authentication and must respond within 5 seconds. It is called
-by the Timer Function cold-start mitigator (see §2.4) and by ACA health probes.
+**Honour reverse-proxy headers.**
+The BFF sits behind the ACA ingress reverse proxy. Honour `X-Forwarded-Proto`
+and `X-Forwarded-Host` when constructing absolute URLs (e.g. in OAuth redirect
+responses) so that HTTPS-scheme URLs are generated correctly.
 
-**Implement the catalog page and tile launch.**
-Render the authorized demo tiles as HTML. Each tile includes a thumbnail, title,
-and description. When the user clicks a tile, the page executes a top-level
-browser navigation (`window.location.href = demo.launchUrl`) — do not use an
-iframe or a server-side proxy route. This is a hard design constraint: each demo
-runs in its own process and manages its own session (runbook §7).
+**Session cookie security attributes.**
+Set `Secure`, `HttpOnly`, and `SameSite=Lax` on all session cookies. Do not
+set cookies without `Secure` — they will be silently dropped by modern browsers
+on HTTPS pages.
 
-**Inject correlation IDs on all outbound requests.**
-Insert a `traceparent` header (W3C Trace Context) or `X-Request-ID` on every
-outbound call from the BFF. Log the same value in all BFF log entries for that
-request cycle. This is the primary mechanism by which incidents are traced across
-the Showroom and demo-app boundaries.
-
-
-### Deployment
-
-**Deploy the ACA environment and the Showroom ACA app.**
-Environment: `cae-pwc-showroom-<env>-<region>`, Consumption plan, no VNet in
-Phase 1. App: `ca-pwc-showroom-<env>-<region>`, external HTTPS ingress on
-port 3000, scale-to-zero (min 0, max 5 replicas). Pull the container image
-from the shared ACR using the ACA app's system-assigned Managed Identity — no
-Docker credentials in any environment variable (runbook §2.2).
-
-**Provision the shared Azure Container Registry.**
-Create `crpwcshowroom<region>.azurecr.io`. Assign `AcrPull` to the Showroom
-ACA app's Managed Identity. All demo teams that elect to share the ACR also
-receive `AcrPull` on their own Managed Identities; teams using their own
-registry do not. Coordinate ACR provisioning with the wider-DevOps function
-before any team attempts an image push (see §5.1).
-
-**Provision the Showroom Key Vault.**
-Create `kv-pwc-showroom-<env>-<region>`. Store the App Registration client
-secret, the `FINCRIME_GROUP_OID` value, and any future secrets here. Grant the
-Showroom ACA app's Managed Identity the `Key Vault Secrets User` role.
-
-**Provision the Showroom Log Analytics workspace.**
-Create `log-pwc-showroom-<env>-<region>`. Link the ACA environment to it so
-that `stdout`/`stderr` from the Showroom container is shipped automatically.
-Each demo team owns and pays for its own workspace — do not co-mingle their
-log streams with the Showroom's.
-
-**Deploy the cold-start Timer Function.**
-Create `func-pwc-showroom-<env>-<region>` with a Timer trigger (CRON
-`0 */5 9-18 * * 1-5`, `WEBSITE_TIME_ZONE=W. Europe Standard Time`). The
-function issues a GET to `/api/health` every 5 minutes on weekdays during
-business hours to keep the ACA replica alive and eliminate cold-start latency
-for the first user of the day. The full cost/complexity rationale is documented
-in `aca-vs-appservice-decision.md`.
+**Use Managed Identity for all secret retrieval.**
+`DefaultAzureCredential` must be the only mechanism by which the BFF acquires
+credentials. No connection strings, shared keys, or service principal passwords
+may appear in environment variables at rest, configuration files, or source
+control.
 
 
 ### Operations
 
-**Publish the Phase 1 handoff outputs to each demo team.**
-Before wiring any demo, deliver the values listed in §4.2 of this document.
-Do not allow a demo team to begin integration work until they have received
-all Phase 1 handoff outputs.
-
-**Maintain the demo-map.json manifest.**
-`demo-map.json` is the single configuration file that controls which demos
-appear in the catalog and who may see them. When a new demo is onboarded or
-an authorization entry changes, update the file and release a new container
-revision. Keep the schema stable — any breaking schema change must be
-communicated to demo teams before deployment.
-
-**On-call rota.**
-Maintain an on-call rota for the Showroom platform covering business hours
-and the agreed out-of-hours escalation path. Share this rota with the wider
-DevOps function and with each demo team lead.
+**Log structured output to stdout/stderr.**
+The ACA environment captures container stdout/stderr and forwards it to the Log
+Analytics workspace automatically. Emit structured JSON logs. Include the
+correlation ID, HTTP method, path, status code, and latency on every request.
 
 
-## Phase 2 Additional Activities — External Prospects
+## Phase 2 Additional Activities — External Audience (Prospects)
 
-Phase 2 opens the Showroom to external visitors who are not PwC employees.
-The Showroom becomes the **sole identity provider** for external sessions and
-issues signed JWTs to each demo application in lieu of an Entra token.
-
-**All Phase 1 activities remain mandatory.** Phase 2 adds the following.
-Full details are in `showroom/phase2/devops-runbook.md`.
+Phase 2 extends the Showroom to unauthenticated external visitors who sign in
+via Google or Microsoft consumer accounts. All Phase 1 activities remain
+mandatory. Phase 2 adds the following.
 
 
-### External Identity Provider Integration
+### External Authentication Handlers
 
-**Configure the external OAuth providers (Google, Microsoft consumer).**
-Integrate Google OAuth 2.0 and Microsoft consumer (personal account) OIDC into
-the Showroom BFF. External sessions are routed via the
-`showroom.pwc.example` subdomain; internal (Entra) sessions remain on
-`admin.showroom.pwc.example`. The subdomain routing is enforced at Front Door
-(see §3.2); the BFF must check the incoming host header to select the
-correct authentication path.
+**Implement the Google OAuth 2.0 handler.**
+The BFF must initiate the Google OAuth 2.0 Authorization Code flow using the
+`GOOGLE_CLIENT_ID` environment variable and the `google-oauth-client-secret`
+retrieved from Key Vault (secret name in `GOOGLE_SECRET_NAME`). Redirect the
+user to Google's `/authorize` endpoint, handle the callback at
+`/api/auth/callback/google`, exchange the code for tokens, and extract the
+`email` and `name` claims from the ID token.
 
-**Store external-IdP client credentials in the Showroom Key Vault.**
-The client ID and secret for Google OAuth and the Microsoft consumer OIDC app
-registration must be stored in the Showroom Key Vault and retrieved at runtime
-via Managed Identity. Rotate on the same schedule as internal credentials.
+**Implement the Microsoft consumer OAuth handler.**
+The BFF must initiate the Microsoft identity platform Authorization Code flow
+for personal accounts using `MICROSOFT_CLIENT_ID` and
+`ms-oauth-client-secret` (Key Vault secret name in `MICROSOFT_SECRET_NAME`).
+Callback path: `/api/auth/callback/microsoft-consumer`.
 
-**Do not forward external user credentials to demo apps.**
-Once the Showroom has authenticated an external user, it issues a Showroom-signed
-JWT. Demo apps verify that JWT and derive identity from it. The Showroom never
-shares the raw Google or Microsoft token with any downstream application.
+**Implement subdomain-aware routing.**
+The BFF must inspect the `Host` header (or `X-Forwarded-Host`) on every request
+and apply different authentication and routing logic per subdomain:
 
+- `showroom.pwc.example` (value of `PROSPECT_ORIGIN`): accept only Google /
+  Microsoft-consumer sessions. Render the external prospect catalog.
+- `admin.showroom.pwc.example` (value of `ADMIN_ORIGIN`): accept only PwC Entra
+  ID sessions. Render the internal admin panel and presenter catalog.
 
-### JWT Issuance to Demo Applications
+A session established on one subdomain must not be accepted on the other.
 
-**Generate and publish an RSA key pair for JWT signing.**
-Create an RS256 signing key pair. Assign a unique `kid` (key identifier) to
-each key. Store the private key in the Showroom Key Vault. Publish the
-corresponding public key in the JWKS document at a stable URL (for example,
-<https://showroom.pwc.example/.well-known/jwks.json>). The JWKS endpoint must
-be publicly accessible without authentication and must return within 5 seconds.
+**Retrieve the auth session secret from Key Vault.**
+The BFF reads the `AUTH_SECRET_NAME` environment variable to determine the Key
+Vault secret name for the `AUTH_SECRET` value used to encrypt session cookies.
+This value is retrieved via Managed Identity at startup.
 
-**Maintain at least two keys in the JWKS document during rotation.**
-When rotating the signing key, add the new key to the JWKS document and keep
-the old key for at least 24 hours before removing it. This allows demo apps
-that have cached the JWKS to pick up the new key without an authentication
-outage. Never remove a key from the JWKS while any unexpired token signed by
-it may still be in circulation.
+**Enforce the Cosmos DB allow-list for external prospects.**
+After a successful Google or Microsoft consumer login, look up the user's email
+in the Cosmos DB `users` container (endpoint in `COSMOS_ENDPOINT`, database name
+in `COSMOS_DB`). Accept the session only if `users.status` is `active`. Return
+an access-denied page (HTTP 200, human-readable message) if the user is absent
+from the list, has `status = banned`, or has `status = quota_exhausted`.
 
-**Issue JWTs with all mandatory claims.**
-For every external session, issue a short-lived JWT containing: `iss`
-(Showroom issuer URL), `aud` (the per-demo audience string supplied to that
-demo team), `sub` (stable user identifier), `email` (from the external IdP),
-`exp` (not more than the session duration), and `nbf`. Sign with the current
-RS256 private key and include the matching `kid` in the JWT header.
-
-**Rotate signing keys at least annually.**
-Schedule key rotation and communicate the rotation schedule to all demo teams
-in advance. A rotation must not break any live demo session — follow the two-key
-window rule above. After rotation, deliver the updated JWKS URL and any changed
-issuer or audience values to every demo team before removing the old key.
-
-**Deliver the JWKS and JWT parameters to each demo team.**
-See the handoff table in §4.2.
+**Write to Cosmos DB using Managed Identity.**
+The BFF accesses Cosmos DB using `DefaultAzureCredential`. The Managed Identity
+has been granted the `Cosmos DB Built-in Data Contributor` role by DevOps. Never
+use a Cosmos DB connection string or primary key.
 
 
-### Front Door and WAF
+### Signed JWT Handoff
 
-**Deploy Azure Front Door (Standard tier).**
-Create `afd-pwc-showroom-<env>-<region>`. Configure two origin groups both
-pointing to the Showroom ACA app over HTTPS — one for `showroom.pwc.example`
-(external path) and one for `admin.showroom.pwc.example` (internal path). No
-Private Link or VNet in Phase 2.
+**Do not implement an external OAuth flow for demo apps.**
+The Showroom is the sole identity provider for external prospects. Demo apps
+must not initiate their own Google or Microsoft consumer OAuth flows. The
+Showroom mints a signed JWT and the demo app validates it.
 
-**Configure the WAF policy in Prevention mode.**
-Create `waf-pwc-showroom-<env>-<region>`, OWASP CRS 3.2, bot-manager ruleset,
-attached to the Front Door profile. Prevention mode means the WAF blocks
-matching requests rather than just logging them.
+**Mint the handoff JWT by calling the Key Vault Sign API.**
+On demo launch, the BFF must:
 
-**Configure custom domains and TLS.**
-Use DigiCert ManagedCertificate provisioned by Front Door. Minimum TLS version
-1.2. Domain validation is via TXT record in the DNS zone owned by the wider
-DevOps function (coordinate per §5.1). Auto-renewal is handled by Front Door;
-no manual certificate management is required.
+1. Read the current key version from the `HANDOFF_KEY_NAME` Key Vault key
+   (`demo-handoff-key`). Refresh the cached version every 15 minutes.
+2. Construct the JWT header and payload (see below) and serialize them as the
+   unsigned token input.
+3. Call the Key Vault Sign API (`RS256` algorithm) with the input bytes. Key
+   Vault performs the RSA operation; the private key material never leaves
+   Key Vault.
+4. Assemble the final JWT from the header, payload, and the signature returned
+   by Key Vault.
 
-**Enforce the X-Azure-FDID header.**
-Configure the ACA app's ingress to require the `X-Azure-FDID` header matching
-the Front Door profile identifier. This prevents external traffic from reaching
-the ACA origin directly, bypassing the WAF. Deliver the `X-Azure-FDID` value
-to every demo team so they can enforce the same check in their own origin
-(see `developer-integration-checklist.md` §3.2).
+**JWT claims the Showroom must include.**
+Every handoff JWT must carry: `iss` set to the Showroom issuer URL (the
+`PROSPECT_ORIGIN` value); `aud` set to the demo's `demoId` string (from
+`demo-map.json`); `sub` set to the SHA-256 hash of the user's email; `email`
+set to the SHA-256 hash of the user's email; `visitId` as a new UUID per
+launch; `exp` set to 60 seconds from issuance; `nbf` set to the current time;
+`kid` set to the current Key Vault key version string.
 
-**Do not allow direct-to-origin traffic in production.**
-Apply an ACA access restriction to accept inbound requests only from the
-Azure Front Door service tag. This is network-layer enforcement; the header
-check is application-layer enforcement. Both must be in place.
+**Keep the JWT TTL at 60 seconds.**
+The JWT is a single-use launch credential. Its TTL must be 60 seconds. After
+delivery, the demo app establishes its own session; the JWT is not reused.
 
-
-### APIM Ingress
-
-**Deploy Azure API Management.**
-Place APIM between Front Door and the ACA origin for the external path. Configure
-a `validate-jwt` policy that checks the external-user JWT issued by the Showroom's
-own token endpoint. For the internal path, the `validate-jwt` policy checks the
-Entra ID JWT, replacing the in-app middleware check from Phase 1.
-
-**Rate-limit at APIM.**
-Configure separate rate-limit counters for external (Phase 2 JWT) and internal
-(Entra) sessions. External prospect traffic is less predictable; it must not
-consume quota that would degrade internal users.
+**Publish `/.well-known/jwks.json`.**
+The BFF must serve a JWKS document at `/.well-known/jwks.json` containing the
+public components of all active key versions (current and any version in the
+48-hour rotation overlap window). Derive the public key parameters from the Key
+Vault Get Key API response. Set `Cache-Control: max-age=900` on the response.
+The private key material must never appear in the JWKS document.
 
 
-### Usage Callback Receiver
+### Origin Protection
 
-**Implement the usage-callback POST endpoint.**
-Expose an endpoint that demo apps POST to when reporting message or interaction
-counts. Validate the `X-Demo-Callback-Secret` header on every inbound POST;
-reject requests without it or with an invalid value. Store callback events in
-Cosmos DB. Define the payload schema and deliver it to each demo team as part
-of the Phase 2 handoff (see §4.2).
+**Enforce the `X-Azure-FDID` header check.**
+Implement a BFF middleware that runs before any routing or authentication logic
+on every inbound request:
 
-**Provision Cosmos DB for demo metadata and callback storage.**
-Create the Cosmos DB account for the allow-list of registered demos and for
-usage-callback event storage. Grant the Showroom ACA app's Managed Identity
-the `Cosmos DB Built-in Data Contributor` role. No demo team has direct access
-to this database.
+1. Read the `X-Azure-FDID` header.
+2. Compare it with the `FRONT_DOOR_ID` environment variable using a
+   constant-time string comparison.
+3. If the header is absent or the values differ, return `403 Forbidden`
+   immediately and log the source IP and the received header value.
+4. If the values match, pass the request to the next middleware.
 
-**Deliver the callback secret to each demo team via Key Vault.**
-Generate a unique `X-Demo-Callback-Secret` per demo. Store it in the Showroom
-Key Vault and transmit it to the demo team only via a mechanism they can store
-directly in their own Key Vault (for example, a time-limited shared-access URL
-or an Azure Key Vault secret-sharing facility). Never transmit via email,
-Teams, or any uncontrolled channel.
+This check prevents direct-to-origin access that bypasses the WAF.
+
+
+### Usage Telemetry
+
+**Record connection events in Cosmos DB.**
+On every successful external login, write one document to the
+`connection_events` container with fields: `email`, `connectionAt` (ISO 8601
+UTC), `ip`, `userAgent`. Append-only; never update these records.
+
+**Record demo visits in Cosmos DB.**
+On every demo launch, write one document to the `demo_visits` container with
+fields: `visitId` (UUID), `email`, `demoId`, `openedAt` (ISO 8601 UTC).
+`messageCount` and `closedAt` are back-filled later by the usage callback.
+
+**Implement the usage callback receiver.**
+Expose `POST /api/internal/demo-usage`. On every inbound POST:
+
+1. Read the `X-Demo-Callback-Secret` header. Retrieve the expected value from
+   Key Vault (secret name in `DEMO_CALLBACK_SECRET_NAME`) and compare using a
+   constant-time comparison. Return `401 Unauthorized` if the values do not
+   match.
+2. Parse the JSON payload and update the matching `demo_visits` document with
+   `messageCount` and `closedAt`.
+3. Decrement `messageQuotaRemaining` in the `users` document by the reported
+   message count. If the result reaches zero, set `status = quota_exhausted`.
+4. Return `200 OK`.
+
+**Emit App Insights custom events.**
+Emit exactly three custom events to App Insights using the connection string in
+`APPINSIGHTS_CONNECTION_STRING`: `ProspectLoggedIn` on external login,
+`DemoOpened` on demo launch, `UsageReported` on receipt of a usage callback.
+Always SHA-256-hash the email before including it in any App Insights payload.
+Never emit raw email addresses to App Insights.
+
+**Rate-limit external users independently.**
+Apply separate rate-limit counters for external (Phase 2 JWT) sessions and
+internal (Entra) sessions. External prospect loads are less predictable and
+must not degrade the experience for internal users.
+
+**Log external identity claims separately for GDPR.**
+Write access logs for sessions established via Google or Microsoft consumer
+login to a separate log stream with the retention period agreed with Showroom
+DevOps. Do not co-mingle these records with application-logic logs. Obtain
+data-protection officer sign-off before the first external user reaches
+production.
+
+
+### Business Reporting Surface
+
+**Build the Azure Monitor Workbook `wb-pwc-showroom-usage`.**
+This workbook is the primary business-reporting surface for PwC presenters and
+managers. Build it in the dev environment first, then clone to prod. DevOps
+runbook §14 specifies the resource location, naming convention, and the RBAC
+assignments that DevOps will provision for presenter accounts.
+
+**Source all workbook data from Cosmos DB, not App Insights.**
+The workbook queries the `users`, `connection_events`, and `demo_visits`
+containers directly using Cosmos DB SQL. Do not query App Insights for business
+data — App Insights holds hashed emails for operational telemetry only. Plain
+emails and quota state live in Cosmos DB and must stay there.
+
+**Deliver a three-panel initial workbook.**
+Minimum viable delivery: (a) a prospect table showing email, status, quota
+remaining, and last connection timestamp; (b) a sign-ins-over-time line chart
+by day; (c) a demo-popularity bar chart grouped by `demoId`. Additional panels
+may be added iteratively based on presenter feedback.
 
 
 ### Operations Additions
 
-**GDPR and data-classification handling.**
-External user identity data (`sub`, `email`) from Google and Microsoft consumer
-IdPs must be logged in a separate, restricted log stream with the retention
-period aligned to your GDPR data-protection officer's guidance. Do not
-co-mingle external identity data with application-logic logs. Obtain
-data-protection sign-off before the first external user reaches production.
+**Alert on repeated JWT-verification failures.**
+Configure an alert that fires when the JWKS-signature-verification failure rate
+for the JWKS endpoint itself (i.e. demo apps failing to verify the
+`/.well-known/jwks.json` response) exceeds five failures in a five-minute
+window. This may indicate a key-rotation event that demo apps have not yet
+picked up.
 
-**Alert on JWKS and callback anomalies.**
-Configure alerts for: (a) JWKS endpoint returning non-200 for more than
-2 consecutive health probes; (b) elevated JWT-verification failure rate on the
-APIM `validate-jwt` policy; (c) usage-callback rejection rate exceeding a
-threshold. These alert on platform failures before demo teams notice them.
-
-**On-call rota update.**
-Update the on-call rota to include Phase 2 components (Front Door, WAF, APIM,
-external IdP). Ensure the wider DevOps function has emergency contacts for
-Front Door and Cosmos DB incidents.
+**Alert on usage-callback rejection spikes.**
+Configure an alert that fires when the rate of `401 Unauthorized` responses from
+`POST /api/internal/demo-usage` exceeds five in a five-minute window. This may
+indicate a secret-rotation mismatch.
 
 
-## Point of Contact with Demo Teams
+## Point of Contact with Showroom DevOps
 
-These tables are the mirror of §4 in `developer-integration-checklist.md`.
-Every row in §4.1 corresponds to a row in that document's §4.1 (What You Send
-to DevOps). Every row in §4.2 corresponds to a row in that document's §4.2
-(What You Receive from DevOps). Keep both tables in sync when either changes.
+This section governs all communication between the Showroom developer team and
+the Showroom DevOps team. Follow it exactly to avoid delays, security incidents
+from mishandled secrets, or wiring errors caused by stale values.
 
 
-### What You Receive from Each Demo Team
+### What You Send to Showroom DevOps
+
+Deliver the following artefacts to Showroom DevOps before each milestone. Never
+transmit secrets via email, Teams direct message, WhatsApp, or any uncontrolled
+channel. Any secret transmitted outside approved paths must be rotated
+immediately.
 
 | Artefact | Format | Required for |
 |---|---|---|
-| Demo name and short URL slug | plain text | Kick-off |
-| Public launch URL (FQDN) | URL | Phase 1 wiring |
-| Entra redirect URI (callback URL) | URL | Phase 1 wiring |
-| Demo Entra App Registration client ID | GUID | Phase 1 wiring |
-| Expected user groups (Object IDs) | list of GUIDs | Phase 1 wiring |
-| Liveness endpoint path | URL path | Phase 1 wiring |
-| Usage callback endpoint | URL | Phase 2 wiring |
-| Data-classification and GDPR note | short text | Phase 2 wiring |
-| Break-glass contact rota | name, email, phone | Before go-live |
-| Notification of any FQDN or port change | plain text | Whenever it changes |
-| demo-map.json tile entry values (name, slug, thumbnail URL, auth groups) | plain text / JSON | Before Phase 1 wiring |
+| Entra redirect URI for custom subdomain | URL | Phase 2 wiring |
+| Google OAuth callback URI | URL | Phase 2 wiring |
+| Microsoft consumer OAuth callback URI | URL | Phase 2 wiring |
+| Confirmation that FDID check is implemented | plain text | Phase 2 go-live |
+| GDPR note and data-protection sign-off | document | Phase 2 go-live |
+| Notification of any route or callback path change | plain text | Whenever it changes |
 
 
-### What You Provide to Each Demo Team
+### What You Receive from Showroom DevOps
 
-Never transmit secret values via email, Teams direct message, or any
-uncontrolled channel. Rotate any value that is transmitted outside the approved
-path immediately.
+Showroom DevOps will supply the following values. Store each one as directed;
+never in source control or plain-text configuration.
 
-| Artefact | Format | Rotation schedule |
+| Artefact | Where to store | Notes |
 |---|---|---|
-| Showroom JWKS URL | URL | Stable (notify on change) |
-| JWT audience (`aud`) value for this demo | string | Stable |
-| JWT issuer (`iss`) value | URL | Stable |
-| `X-Demo-Callback-Secret` shared secret | string | At least annually |
-| `X-Azure-FDID` Front Door identifier | GUID | On Front Door replacement |
-| Usage-callback path and payload schema | URL + schema doc | On breaking change |
-| Group Object IDs the demo app must authorise | list of GUIDs | On org change |
-| Showroom origin URLs for CORS allow-list | list of URLs | Stable |
-| Test-tenant credentials for dev validation | scoped credentials | Per test cycle |
-| Showroom platform on-call contact rota | name, email, phone | Before Phase 1 go-live |
+| Key Vault URL (`KEY_VAULT_URL`) | ACA env var | Points to `kv-pwc-showroom-<env>-<region>` |
+| Entra client secret name (`CLIENT_SECRET_NAME`) | ACA env var | Value: `showroom-client-secret` |
+| Entra tenant ID (`AZURE_TENANT_ID`) | ACA env var | PwC Entra tenant GUID |
+| Entra App Registration client ID (`AZURE_CLIENT_ID`) | ACA env var | Showroom App Registration |
+| Security group Object ID (`FINCRIME_GROUP_OID`) | ACA env var | Layer-1 group check |
+| Cosmos DB endpoint (`COSMOS_ENDPOINT`) | ACA env var | Cosmos account HTTPS endpoint — copy from Portal |
+| Cosmos DB database name (`COSMOS_DB`) | ACA env var | Value: `showroom` |
+| App Insights connection string (`APPINSIGHTS_CONNECTION_STRING`) | ACA env var | Non-secret; safe to log |
+| Google client ID (`GOOGLE_CLIENT_ID`) | ACA env var | Non-secret |
+| Microsoft consumer client ID (`MICROSOFT_CLIENT_ID`) | ACA env var | Non-secret |
+| Prospect origin URL (`PROSPECT_ORIGIN`) | ACA env var | External prospect subdomain HTTPS origin |
+| Admin origin URL (`ADMIN_ORIGIN`) | ACA env var | Admin subdomain HTTPS origin |
+| Auth secret name (`AUTH_SECRET_NAME`) | ACA env var | Key Vault secret name: `auth-secret` |
+| Google secret name (`GOOGLE_SECRET_NAME`) | ACA env var | Key Vault secret name: `google-oauth-client-secret` |
+| Microsoft secret name (`MICROSOFT_SECRET_NAME`) | ACA env var | Key Vault secret name: `ms-oauth-client-secret` |
+| Handoff key name (`HANDOFF_KEY_NAME`) | ACA env var | Key Vault Key name: `demo-handoff-key` |
+| Front Door ID (`FRONT_DOOR_ID`) | ACA env var | Front Door instance GUID; used for FDID header check |
+| Callback secret name (`DEMO_CALLBACK_SECRET_NAME`) | ACA env var | Key Vault secret name: `demo-callback-shared-secret` |
+| Front Door endpoint hostname | plain text | ACA-to-Front-Door wiring; needed during dev |
+| Custom FQDNs once DNS is validated | plain text | `showroom.pwc.example`, `admin.showroom.pwc.example` |
+| Test-tenant credentials for dev validation | scoped credentials | Per test cycle; store in Key Vault |
+| Cosmos DB Reader RBAC for presenter accounts | plain text confirmation | Provisioned by DevOps per §14; needed before workbook go-live |
 
 
-## Point of Contact with the Wider DevOps Function
+## Build Sequence
 
-The Showroom platform depends on infrastructure owned by the wider PwC DevOps
-function. Coordinate the items below before beginning either phase.
+Follow these steps in order. Do not attempt Phase 2 implementation before Phase
+1 is validated end-to-end.
 
-
-### What You Request from the Wider DevOps Function
-
-| Action required | Timing |
-|---|---|
-| Entra tenant admin creates `app-pwc-showroom` App Registration | Before Phase 1 provisioning |
-| Entra admin grants `GroupMember.Read.All` admin consent | Before Phase 1 provisioning |
-| Entra admin provisions `FINCRIME_GROUP_OID` security group | Before Phase 1 go-live |
-| DNS subdomain delegation for `showroom.pwc.example` and `admin.showroom.pwc.example` | Before Phase 2 Front Door setup |
-| DNS TXT record for DigiCert certificate domain validation | Before Phase 2 Front Door setup |
-| CAA record authorising DigiCert in the DNS zone | Before Phase 2 Front Door setup |
-| Budget alert thresholds and FinOps tags agreed for the Showroom resource group | Before any provisioning |
-| Log Analytics parent workspace or retention policy confirmation | Before Phase 1 provisioning |
-
-
-### What You Provide to the Wider DevOps Function
-
-| Artefact | Timing |
-|---|---|
-| Resource group naming (`rg-pwc-showroom-<env>-<region>`) and tag values | At provisioning start |
-| List of Managed Identity principal IDs needing ACR pull access | Before first image push |
-| List of Managed Identity principal IDs needing Key Vault access | Before first deployment |
-| Estimated Cosmos DB throughput and storage for Phase 2 | Before Phase 2 provisioning |
-| Data-classification label for external user identity log stream | Before Phase 2 go-live |
-
-
-## Onboarding Sequence
-
-Follow these steps in order. Phase 2 must not begin before Phase 1 is
-validated end-to-end.
-
-1. Read `showroom/phase1/devops-runbook.md` in full. Identify decisions that
-   need Entra tenant admin involvement or DNS changes (both require lead time).
-2. Submit the §5.1 requests to the wider DevOps function for Phase 1 items.
-3. Provision the resource group, Key Vault, ACR, and Log Analytics workspace.
-4. Create the App Registration, enable the groups claim, store the client
-   secret in Key Vault.
-5. Build the BFF container image and push to ACR.
-6. Deploy the ACA environment + app and the Timer Function.
-7. Deliver the Phase 1 handoff outputs (§4.2) to the first demo team.
-8. Perform end-to-end validation with one demo (authentication, Layer-1 authz,
-   Layer-2 tile filter, tile launch, health probe, correlation ID propagation).
-9. Obtain Phase 1 go-live sign-off.
-10. Read `showroom/phase2/devops-runbook.md` in full. Submit Phase 2 DNS and
-    certificate requests to the wider DevOps function.
-11. Provision Front Door, WAF, APIM, Cosmos DB, and external-IdP credentials.
-12. Generate the RS256 signing key pair, publish the JWKS endpoint, and
-    deliver Phase 2 handoff outputs (§4.2) to each demo team.
-13. Perform end-to-end validation with an external test user through the JWT
-    hand-off, usage callback, and Front Door header enforcement.
-14. Obtain Phase 2 go-live sign-off.
+1. Read this checklist in full and identify any items that require clarification
+   from DevOps (environment variable values, Key Vault secret names, group OIDs).
+2. Receive the Phase 1 §4.2 artefacts from Showroom DevOps.
+3. Implement all Phase 1 activities (§2).
+4. Perform end-to-end validation in the dev environment: login, group check,
+   access-denied page, catalog render, tile filter, demo launch, health endpoint,
+   correlation ID in logs.
+5. Obtain Phase 1 go-live sign-off from Showroom DevOps.
+6. Receive the Phase 2 §4.2 artefacts from Showroom DevOps.
+7. Implement all Phase 2 activities (§3).
+8. Perform end-to-end Phase 2 validation: Google login, Microsoft consumer login,
+   subdomain routing, Cosmos DB allow-list check, handoff JWT mint and delivery,
+   JWKS publication, FDID check, usage callback receipt, App Insights events,
+   GDPR log separation, rate-limit behaviour.
+9. Obtain Phase 2 go-live sign-off from Showroom DevOps.
 
 \newpage
 
 ## Pre-flight Readiness Summary
 
-Use this table as a final check before requesting go-live sign-off from
-the wider DevOps function. Every row must be ticked.
+Use this table as a final checklist before requesting go-live sign-off from
+Showroom DevOps. Every row must be ticked.
 
 ### Phase 1 readiness
 
 | Activity | Done |
 |---|---|
-| App Registration `app-pwc-showroom` created as Web (confidential client) | |
-| Redirect URIs registered (ACA FQDN + localhost) | |
-| Groups claim enabled; GroupMember.Read.All admin-consented | |
-| Client secret stored in Key Vault, retrieved via Managed Identity | |
 | OIDC Authorization Code + PKCE implemented in BFF; tokens not in browser | |
-| Layer-1 authz: FINCRIME_GROUP_OID checked on every request | |
-| Layer-2 authz: demo-map.json loaded; tiles filtered per user oid/groups | |
-| ACA environment + app deployed; external HTTPS ingress on port 3000 | |
-| Scale configured (min 0, max 5); cold-start Timer Function deployed | |
-| ACR provisioned; Managed Identity image pull working | |
-| Key Vault provisioned; Managed Identity secret access verified | |
-| Log Analytics workspace provisioned; ACA stdout/stderr flowing | |
-| `/api/health` returns HTTP 200 unauthenticated within 5 s | |
-| Correlation IDs injected on all outbound BFF requests | |
-| Phase 1 handoff outputs delivered to first demo team | |
-| demo-map.json schema documented and shared with demo teams | |
-| On-call rota published to wider DevOps function and demo team leads | |
+| Client secret retrieved from Key Vault via Managed Identity at startup | |
+| Layer-1 group check enforced on every request, not only at login | |
+| Group-claim overage handled via Graph API | |
+| Access-denied page returns HTTP 200 with human-readable message | |
+| Silent SSO verified; no spurious re-prompts | |
+| Catalog built from `demo-map.json` | |
+| Layer-2 tile filter applied per user's group membership | |
+| Demo launch uses top-level navigation, no iframe or proxy | |
+| `GET /api/health` returns HTTP 200 unauthenticated within 5 s | |
+| `X-Forwarded-Proto` and `X-Forwarded-Host` honoured in redirect URIs | |
+| Session cookies carry Secure, HttpOnly, SameSite attributes | |
+| Managed Identity used for all Key Vault secret retrieval | |
+| Correlation ID propagated in all outbound calls and log entries | |
+| Structured JSON logs emitted to stdout | |
 
 ### Phase 2 readiness (in addition to all Phase 1 rows)
 
 | Activity | Done |
 |---|---|
-| Google OAuth and Microsoft consumer OIDC configured and tested | |
-| External-IdP client credentials stored in Key Vault | |
-| RS256 signing key pair generated; private key in Key Vault | |
-| JWKS endpoint published and publicly accessible without auth | |
-| Two-key JWKS maintained; rotation procedure documented | |
-| JWTs issued with all mandatory claims (iss, aud, sub, email, exp, nbf) | |
-| Front Door (Standard) + WAF (Prevention, OWASP CRS 3.2) deployed | |
-| Custom domains + DigiCert ManagedCertificate active; TLS 1.2 minimum | |
-| X-Azure-FDID ACA ingress restriction enforced; direct-origin traffic blocked | |
-| APIM deployed with validate-jwt policy for both external and internal paths | |
-| Rate-limiting per-session-type configured at APIM | |
-| Usage-callback POST endpoint implemented; X-Demo-Callback-Secret validated | |
-| Cosmos DB provisioned; allow-list and callback storage working | |
-| Per-demo callback secret generated and delivered via approved channel | |
-| GDPR log stream separated; data-protection sign-off obtained | |
-| Phase 2 handoff outputs (JWKS URL, aud, iss, X-Azure-FDID, callback schema, test creds) delivered to all demo teams | |
-| Alerts configured for JWKS health, JWT-failure rate, callback rejection rate | |
+| Google OAuth 2.0 handler implemented; secret from Key Vault | |
+| Microsoft consumer OAuth handler implemented; secret from Key Vault | |
+| Subdomain routing implemented: prospect vs. admin path | |
+| Auth session secret retrieved from Key Vault at startup | |
+| Cosmos DB allow-list check enforced for external prospects | |
+| Cosmos DB writes use Managed Identity, not a connection string | |
+| `X-Azure-FDID` header check implemented; non-matching requests return 403 | |
+| Handoff JWT minted via Key Vault Sign API (private key never in process) | |
+| JWT claims include iss, aud, sub (hashed), email (hashed), visitId, exp, kid | |
+| JWT TTL set to 60 seconds | |
+| `/.well-known/jwks.json` published; Cache-Control: max-age=900 | |
+| JWKS derived from Key Vault Get Key API; no private material in document | |
+| `connection_events` document written on every external login | |
+| `demo_visits` document written on every demo launch | |
+| `POST /api/internal/demo-usage` implemented; HMAC check on callback secret | |
+| Cosmos DB quota decremented and status updated on usage callback | |
+| Three App Insights custom events emitted; email always SHA-256-hashed | |
+| External identity claims logged separately; GDPR sign-off obtained | |
+| Rate-limiting applied separately to external and internal sessions | |
+| Alert on JWKS verification failure spike configured | |
+| Alert on usage-callback rejection spike configured | |
+| Workbook `wb-pwc-showroom-usage` built in dev and cloned to prod | |

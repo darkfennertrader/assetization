@@ -68,3 +68,7 @@ echo "OK  kickoff-speech.pdf"
 echo "Building tenancy-supply-chain-general.pdf ..."
 build_pdf tenancy-supply-chain-general.md tenancy-supply-chain-general.pdf
 echo "OK  tenancy-supply-chain-general.pdf"
+
+echo "Building apim-value-proposition.pdf ..."
+build_pdf apim-value-proposition.md apim-value-proposition.pdf
+echo "OK  apim-value-proposition.pdf"
